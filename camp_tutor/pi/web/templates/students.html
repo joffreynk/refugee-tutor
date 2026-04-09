@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Students - Camp Tutor{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>All Students</h2>
+    {% if students %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Language</th>
+                <th>Level</th>
+                <th>Sessions</th>
+                <th>Time (min)</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+            <tr>
+                <td><code>{{ student.id[:12] }}...</code></td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.preferred_language|upper }}</td>
+                <td>{{ student.current_level }}</td>
+                <td>{{ student.total_sessions }}</td>
+                <td>{{ student.total_time_minutes }}</td>
+                <td>{{ student.created_at[:10] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No students found.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}

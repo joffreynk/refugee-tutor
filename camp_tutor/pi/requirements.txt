@@ -1,0 +1,38 @@
+# Camp Tutor - Python Dependencies
+
+# Core
+flask>=2.0.0
+werkzeug>=2.0.0
+
+# Bluetooth
+bleak>=0.20.0
+
+# Audio
+pvporcupine>=2.0.0
+pvrecorder>=1.0.0
+speechrecognition>=3.8.0
+pyttsx3>=2.90
+gtts>=2.2.0
+
+# Hardware & Camera
+picamera2>=0.2.0
+RPi.Gpio>=0.7.0
+smbus2>=0.4.1
+
+# Computer Vision (facial recognition)
+opencv-python>=4.5.0
+opencv-contrib-python>=4.5.0
+Pillow>=9.0.0
+numpy>=1.21.0
+
+# Display
+Adafruit-Nokia-LCD>=1.2.0
+Adafruit-GPIO>=1.0.0
+
+# AI/ML (TensorFlow Lite)
+tflite-runtime>=2.5.0
+
+# System (apt packages)
+portaudio19-dev
+mpg123
+espeak

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Progress - Camp Tutor{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Overall Progress by Age Group</h2>
+    <div class="grid">
+        {% for key, info in summary.items() %}
+        <div class="stat-box">
+            <div class="num">{{ info.progress_percent }}%</div>
+            <div class="label">{{ info.display_name }}</div>
+            <div style="margin-top: 10px;">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ info.progress_percent }}%"></div>
+                </div>
+            </div>
+            <div style="margin-top: 10px; color: #888; font-size: 0.8rem;">
+                {{ info.completed_lessons }} lessons completed
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Age Group Selection</h2>
+    <div class="btn-group">
+        {% for ag in age_groups %}
+        <button class="btn {% if ag.key == current_age_group %}btn-primary{% else %}btn-secondary{% endif %}" 
+                onclick="selectAgeGroup('{{ ag.key }}')">
+            {{ ag.display }}
+        </button>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Subject Details</h2>
+    {% if summary and current_age_group %}
+    {% set age_data = summary.get(current_age_group, {}) %}
+    <div class="grid">
+        {% for subject in age_data.subjects or [] %}
+        <div class="stat-box">
+            <div class="num" style="font-size: 1.2rem; text-transform: capitalize;">{{ subject }}</div>
+            <div class="label">Subject</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No progress data available.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+function selectAgeGroup(key) {
+    fetch('/api/age_group', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({age_group: key})
+    }).then(() => window.location.reload());
+}
+{% endblock %}

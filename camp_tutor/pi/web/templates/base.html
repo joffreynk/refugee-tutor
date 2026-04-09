@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Camp Tutor{% endblock %}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+        .header {
+            background: #0f0f23;
+            padding: 15px 20px;
+            border-bottom: 2px solid #00d9ff;
+        }
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+            display: inline-block;
+        }
+        .header .tagline {
+            color: #666;
+            margin-left: 15px;
+            font-size: 0.9rem;
+        }
+        .nav {
+            background: #0a0a1a;
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            color: #aaa;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        .nav a:hover { background: #1a1a2e; color: #fff; }
+        .nav a.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .card {
+            background: #0f0f23;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #ff6b6b;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-around;
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .status-item { text-align: center; }
+        .status-label { color: #666; font-size: 0.8rem; }
+        .status-value {
+            color: #00d9ff;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .status-value.ok { color: #2ed573; }
+        .status-value.error { color: #ff4757; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #00d9ff; color: #1a1a2e; }
+        .btn-primary:hover { background: #00b8d9; }
+        .btn-success { background: #2ed573; color: #1a1a2e; }
+        .btn-danger { background: #ff4757; color: #fff; }
+        .btn-secondary { background: #333; color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th { color: #ff6b6b; }
+        .progress-bar {
+            background: #333;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #00d9ff, #2ed573);
+            height: 100%;
+            transition: width 0.3s;
+        }
+        .device-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+        .device-status.connected { background: #2ed573; color: #1a1a2e; }
+        .device-status.disconnected { background: #ff4757; color: #fff; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .stat-box {
+            background: #1a1a2e;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-box .num {
+            font-size: 2rem;
+            color: #00d9ff;
+            font-weight: bold;
+        }
+        .stat-box .label { color: #666; margin-top: 5px; }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .footer {
+            text-align: center;
+            color: #444;
+            margin-top: 30px;
+            padding: 20px;
+            font-size: 0.8rem;
+        }
+        code {
+            background: #1a1a2e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Camp Tutor</h1>
+        <span class="tagline">Refugee Education Robot</span>
+    </div>
+    
+    <nav class="nav">
+        <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="/students" class="{% if page == 'students' %}active{% endif %}">Students</a>
+        <a href="/courses" class="{% if page == 'courses' %}active{% endif %}">Courses</a>
+        <a href="/results" class="{% if page == 'results' %}active{% endif %}">Results</a>
+        <a href="/progress" class="{% if page == 'progress' %}active{% endif %}">Progress</a>
+        <a href="/config" class="{% if page == 'config' %}active{% endif %}">Config</a>
+    </nav>
+    
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    
+    <div class="footer">
+        Camp Tutor - Refugee Education Robot
+    </div>
+    
+    <script>
+        {% block scripts %}{% endblock %}
+    </script>
+</body>
+</html>
