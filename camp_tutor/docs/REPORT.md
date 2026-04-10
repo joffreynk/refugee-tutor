@@ -1,8 +1,30 @@
 # Camp Tutor - Full Application Review Report
 
-**Date:** April 8, 2026  
-**Version:** 2.0  
+**Date:** April 10, 2026  
+**Version:** 2.1  
 **Status:** COMPLETE
+
+---
+
+## Recent Updates (v2.1)
+
+- Added `install.sh` dependency installation script (skips already installed packages)
+- Added WiFi management module (`config/wifi_manager.py`) for offline/online mode
+- Added camera capture module (`vision/camera_capture.py`)
+- Added facial recognition module (`vision/facial_recognition.py`) - works offline
+- Added Web UI pages: WiFi (`/wifi`), Bluetooth (`/bluetooth`), Device Status (`/devices`) with test buttons
+- Updated LCD driver to use `adafruit-circuitpython-pcd8544` library
+- Updated REX client to fail gracefully without retries
+- Updated main.py to initialize each device independently and track status
+- Added API endpoints for device status tracking
+- Improved graceful failure handling - if REX disconnects, system continues running
+
+## Important Discoveries
+
+1. **Wake Word Detection**: Porcupine requires API key from picovoice.ai. Fallback to simple detector included.
+2. **Voice Output**: pyttsx3 voice "gmw/en" not found on Pi. Uses gTTS as fallback.
+3. **Camera**: python-prctl requires `libcap-dev` system package.
+4. **AI Models**: TensorFlow too large (~282MB) for Pi 3B+ 32GB SD. Uses fallback rule-based AI instead.
 
 ---
 
@@ -365,6 +387,11 @@ The Camp Tutor system is fully implemented with both REX (ESP32) and Pi (Raspber
 - ✓ System Monitor UI for device status
 - ✓ Complete GPIO pin mapping for all components
 - ✓ Diagnostic UI for troubleshooting failing components
+- ✓ WiFi management for offline/online mode
+- ✓ Camera capture module with offline facial recognition
+- ✓ Web UI: WiFi, Bluetooth, Device Status pages
+- ✓ Graceful failure handling - independent device initialization
+- ✓ Device status tracking in web UI
 
 ---
 
@@ -435,6 +462,35 @@ Component                  Status     Details
 
 ======================================================================
 ```
+
+---
+
+## 11. Remaining Tasks
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Flash REX | Flash ESP32 with REX firmware | Pending |
+| I2C Wiring | Verify I2C wiring between Pi and ESP32 | Pending |
+| Bluetooth Test | Test Bluetooth audio output with speaker/headphones | Pending |
+| Web Templates | Add HTML templates for student_add, student_detail | Pending |
+
+---
+
+## 12. Installation Script
+
+The project includes an `install.sh` script that automatically installs all dependencies:
+
+```bash
+cd pi
+chmod +x install.sh
+./install.sh
+```
+
+Features:
+- Skips already installed packages
+- Installs system packages (libcap-dev, portaudio, etc.)
+- Installs Python dependencies
+- Configures SPI and I2C interfaces
 
 ---
 

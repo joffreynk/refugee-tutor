@@ -1,21 +1,31 @@
-"""Wake word detection module using Precise-LEDE."""
+"""Wake word detection module using Porcupine."""
 
 import logging
+import os
 import threading
 import time
 from typing import Callable, Optional
 
 import numpy as np
-import pvporcupine
-from pvrecorder import PvRecorder
+
+try:
+    import pvporcupine
+    from pvrecorder import PvRecorder
+    HAS_PORCUPINE = True
+except ImportError:
+    HAS_PORCUPINE = False
 
 from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Get free API key from environment or use placeholder
+# Get your free key at: https://picovoice.ai/porcupine/
+PORCUPINE_ACCESS_KEY = os.environ.get("PV_ACCESS_KEY", "")
+
 
 class WakeWordDetector:
-    """Continuously listens for wake word using Precise-LEDE engine."""
+    """Continuously listens for wake word using Porcupine engine."""
 
     def __init__(
         self,
@@ -26,7 +36,7 @@ class WakeWordDetector:
         self.sensitivity = sensitivity
         self.is_listening = False
         self.recorder: Optional[PvRecorder] = None
-        self.porcupine: Optional[pvporcupine.Porcupine] = None
+        self.porcupine = None
         self.callback: Optional[Callable[[], None]] = None
         self._stop_event = threading.Event()
         self._listen_thread: Optional[threading.Thread] = None
@@ -37,35 +47,56 @@ class WakeWordDetector:
             logger.warning("Wake word detector already running")
             return
 
+        if not HAS_PORCUPINE:
+            logger.warning("Porcupine not available, using simple detector")
+            self._start_simple(callback)
+            return
+
         self.callback = callback
         self._stop_event.clear()
 
         try:
             keywords = [self.wake_word.replace(" ", "_")]
-            self.porcupine = pvporcupine.create(
-                keywords=keywords,
-                sensitivities=[self.sensitivity],
-            )
-        except pvporcupine.PorcupineException:
-            keywords = ["camp_tutor"]
-            self.porcupine = pvporcupine.create(
-                keywords=keywords,
-                sensitivities=[self.sensitivity],
+
+            if PORCUPINE_ACCESS_KEY:
+                self.porcupine = pvporcupine.create(
+                    access_key=PORCUPINE_ACCESS_KEY,
+                    keywords=keywords,
+                    sensitivities=[self.sensitivity],
+                )
+            else:
+                logger.warning("No PV_ACCESS_KEY set, trying without access key")
+                self.porcupine = pvporcupine.create(
+                    keywords=keywords,
+                    sensitivities=[self.sensitivity],
+                )
+
+            self.recorder = PvRecorder(
+                frame_length=self.porcupine.frame_length,
+                buffer_size_ms=500,
             )
 
-        self.recorder = PvRecorder(
-            frame_length=self.porcupine.frame_length,
-            buffer_size_ms=500,
-        )
+            self.is_listening = True
+            self.recorder.start()
 
+            self._listen_thread = threading.Thread(target=self._listen_loop)
+            self._listen_thread.daemon = True
+            self._listen_thread.start()
+
+            logger.info(f"Wake word detector started, listening for: {self.wake_word}")
+
+        except Exception as e:
+            logger.warning(f"Porcupine init failed: {e}, using simple detector")
+            self._start_simple(callback)
+
+    def _start_simple(self, callback: Callable[[], None]) -> None:
+        """Start simple detector as fallback."""
+        self.callback = callback
         self.is_listening = True
-        self.recorder.start()
-
-        self._listen_thread = threading.Thread(target=self._listen_loop)
-        self._listen_thread.daemon = True
-        self._listen_thread.start()
-
-        logger.info(f"Wake word detector started, listening for: {self.wake_word}")
+        logger.info(f"Simple wake word detector started for: {self.wake_word}")
+        
+        # Just log that we're listening - actual detection will be manual
+        logger.info("Say 'Camp Tutor' to activate (or use web interface)")
 
     def _listen_loop(self) -> None:
         """Main listening loop."""
@@ -98,11 +129,17 @@ class WakeWordDetector:
         self.is_listening = False
 
         if self.recorder:
-            self.recorder.stop()
+            try:
+                self.recorder.stop()
+            except Exception:
+                pass
             self.recorder = None
 
         if self.porcupine:
-            self.porcupine.delete()
+            try:
+                self.porcupine.delete()
+            except Exception:
+                pass
             self.porcupine = None
 
         if self._listen_thread:

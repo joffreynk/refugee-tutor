@@ -27,6 +27,12 @@ _app_state = {
     "status": "IDLE",
     "language": "en",
     "session_active": False,
+    "device_status": {
+        "lcd": {"ok": False, "error": "Not initialized"},
+        "rex": {"ok": False, "error": "Not initialized"},
+        "camera": {"ok": False, "error": "Not initialized"},
+        "audio": {"ok": False, "error": "Not initialized"},
+    },
 }
 
 app.config["SECRET_KEY"] = "camp-tutor-secret-key"
@@ -206,9 +212,23 @@ def api_status():
             "language": _app_state["language"].upper(),
             "session_active": _app_state["session_active"],
             "muted": vol_ctrl.is_muted,
+            "device_status": _app_state.get("device_status", {}),
         })
     except Exception as e:
         logger.error(f"Error getting status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/device_status/update", methods=["POST"])
+def api_device_status_update():
+    """Update device status from main app."""
+    try:
+        data = request.get_json()
+        if data and "device_status" in data:
+            _app_state["device_status"].update(data["device_status"])
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating device status: {e}")
         return jsonify({"error": str(e)}), 500
 
 

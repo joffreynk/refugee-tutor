@@ -1,4 +1,4 @@
-"""REX I2C client module."""
+"""REX I2C client module - resilient to hardware failures."""
 
 import logging
 import time
@@ -20,7 +20,7 @@ except ImportError:
 
 
 class REXClient:
-    """I2C client for REX controller."""
+    """I2C client for REX controller - resilient to connection failures."""
 
     def __init__(
         self,
@@ -31,21 +31,40 @@ class REXClient:
         self.bus_number = bus_number
         self.bus: Optional[Any] = None
         self._connected = False
+        self._last_error: Optional[str] = None
+        self._consecutive_failures = 0
+        self._max_failures = 5
 
     def connect(self) -> bool:
         """Connect to REX controller."""
         if not HAS_SMBUS:
-            logger.warning("SMBus not available - using mock client")
+            self._last_error = "SMBus not available"
+            logger.warning("SMBus not available")
             return False
 
         try:
             self.bus = smbus.SMBus(self.bus_number)
             self._connected = True
+            self._consecutive_failures = 0
             logger.info(f"Connected to REX at 0x{self.address:02X}")
             return True
         except Exception as e:
-            logger.error(f"Could not connect to REX: {e}")
+            self._last_error = str(e)
+            logger.warning(f"Could not connect to REX: {e}")
             return False
+
+    def is_connected(self) -> bool:
+        """Check if REX is connected and responding."""
+        return self._connected and self._consecutive_failures < self._max_failures
+
+    def get_status(self) -> dict:
+        """Get REX status for device monitoring."""
+        return {
+            "connected": self._connected,
+            "responding": self._consecutive_failures < self._max_failures,
+            "last_error": self._last_error,
+            "consecutive_failures": self._consecutive_failures,
+        }
 
     def disconnect(self) -> None:
         """Disconnect from REX."""
@@ -58,267 +77,164 @@ class REXClient:
             self.bus = None
         logger.info("Disconnected from REX")
 
-    def send_command(self, command: str, retries: int = 3) -> str:
-        """Send command and get response with retry logic."""
-        if not self._connected:
-            return "ERROR:NOT_CONNECTED"
+    def send_command(self, command: str, retries: int = 1) -> str:
+        """Send command with minimal retries - fail fast."""
+        if not self.is_connected():
+            self._consecutive_failures += 1
+            return f"ERROR:REX_NOT_AVAILABLE"
 
-        for attempt in range(retries):
-            try:
-                command_bytes = command.encode("ascii")[:31]
-                self.bus.write_i2c_block_data(
-                    self.address,
-                    0x00,
-                    list(command_bytes) + [0] * (32 - len(command_bytes)),
-                )
+        try:
+            command_bytes = command.encode("ascii")[:31]
+            self.bus.write_i2c_block_data(
+                self.address,
+                0x00,
+                list(command_bytes) + [0] * (32 - len(command_bytes)),
+            )
 
-                time.sleep(0.02)
+            time.sleep(0.02)
 
-                response_bytes = self.bus.read_i2c_block_data(self.address, 0x00, 32)
-                response = bytes(response_bytes).decode("ascii").strip("\x00")
+            response_bytes = self.bus.read_i2c_block_data(self.address, 0x00, 32)
+            response = bytes(response_bytes).decode("ascii").strip("\x00")
 
-                if response and not response.startswith("ERROR"):
-                    logger.debug(f"REX command: {command} -> {response}")
-                    return response
-                
-                if "BLOCKED" in response or "STOP" in response:
-                    return response
-                    
-            except Exception as e:
-                logger.warning(f"Command attempt {attempt + 1} failed: {e}")
-                time.sleep(0.05)
+            if response and not response.startswith("ERROR"):
+                self._consecutive_failures = 0
+                return response
 
-        logger.error(f"Command failed after {retries} attempts: {command}")
-        return "ERROR:COMMUNICATION"
+            self._consecutive_failures += 1
+            self._last_error = response
+            return response
 
-    def look(self, direction: str) -> bool:
-        """Point head in direction."""
-        direction = direction.upper()
-        valid_directions = ["LEFT", "CENTER", "RIGHT", "HOME"]
-        if direction not in valid_directions:
-            logger.warning(f"Invalid look direction: {direction}")
-            return False
-
-        response = self.send_command(f"LOOK:{direction}")
-        return response.startswith("OK")
-
-    def get_distance(self) -> int:
-        """Get ultrasonic distance in cm."""
-        response = self.send_command("DIST?")
-
-        if response.startswith("DIST:"):
-            try:
-                return int(response.split(":")[1])
-            except (ValueError, IndexError):
-                return -1
-
-        return -1
-
-    def move(self, direction: str) -> bool:
-        """Move in direction (basic movement)."""
-        direction = direction.upper()
-        valid_directions = ["FWD", "BACK", "LEFT", "RIGHT", "FORWARD", "BACKWARD"]
-        if direction not in valid_directions:
-            logger.warning(f"Invalid move direction: {direction}")
-            return False
-
-        # Normalize to short form
-        dir_map = {"FORWARD": "FWD", "BACKWARD": "BACK"}
-        direction = dir_map.get(direction, direction)
-        
-        response = self.send_command(f"MOVE:{direction}")
-        return response.startswith("OK")
-
-    def omni_move(self, direction: str) -> bool:
-        """Move with omni-directional wheels."""
-        direction = direction.upper()
-        valid_directions = [
-            "FWD", "BACK", "LEFT", "RIGHT",
-            "FL", "FR", "BL", "BR",  # Forward-left, Forward-right, Back-left, Back-right
-            "RL", "RR",  # Rotate left, Rotate right
-            "STOP", "FORWARD", "BACKWARD",
-            "FORWARD_LEFT", "FORWARD_RIGHT", "BACK_LEFT", "BACK_RIGHT",
-            "ROTATE_LEFT", "ROTATE_RIGHT"
-        ]
-        if direction not in valid_directions:
-            logger.warning(f"Invalid omni direction: {direction}")
-            return False
-
-        response = self.send_command(f"OMNI:{direction}")
-        return response.startswith("OK")
-
-    def stop(self) -> bool:
-        """Emergency stop."""
-        response = self.send_command("STOP")
-        return response.startswith("OK")
-
-    def reset(self) -> bool:
-        """Reset system after emergency stop."""
-        response = self.send_command("RESET")
-        return response.startswith("RESET") or response.startswith("OK")
-
-    def home(self) -> bool:
-        """Return to home position."""
-        response = self.send_command("HOME")
-        return response.startswith("OK")
-
-    def calibrate(self) -> bool:
-        """Run calibration routine."""
-        response = self.send_command("CALIBRATE")
-        return response.startswith("OK")
-
-    def buzzer(self, pattern: str = "SHORT") -> bool:
-        """Control buzzer."""
-        pattern = pattern.upper()
-        valid_patterns = ["SHORT", "LONG", "1", "3"]
-        if pattern not in valid_patterns:
-            pattern = "SHORT"
-        
-        response = self.send_command(f"BUZZER:{pattern}")
-        return response.startswith("OK")
-
-    def get_status(self) -> str:
-        """Get REX status."""
-        response = self.send_command("STATUS?")
-        return response
+        except Exception as e:
+            self._consecutive_failures += 1
+            self._last_error = str(e)
+            logger.debug(f"REX command error: {e}")
+            return f"ERROR:{type(e).__name__}"
 
     def ping(self) -> bool:
-        """Ping REX to check connection."""
-        response = self.send_command("PING", retries=1)
-        return response == "PONG"
+        """Ping REX to check if alive."""
+        response = self.send_command("STATUS?", retries=1)
+        return response == "OK" and self._consecutive_failures < self._max_failures
 
-    def is_connected(self) -> bool:
-        """Check if connected to REX."""
-        return self._connected
+    def get_distance(self) -> float:
+        """Get distance from ultrasonic sensor."""
+        response = self.send_command("DISTANCE?")
+        if response.startswith("ERROR"):
+            return -1
+        try:
+            return float(response.strip())
+        except ValueError:
+            return -1
+
+    def move_forward(self, speed: int = 100) -> bool:
+        """Move forward."""
+        response = self.send_command(f"MOVE:FWD:{speed}")
+        return not response.startswith("ERROR")
+
+    def move_backward(self, speed: int = 100) -> bool:
+        """Move backward."""
+        response = self.send_command(f"MOVE:BACK:{speed}")
+        return not response.startswith("ERROR")
+
+    def move_left(self, speed: int = 100) -> bool:
+        """Move left."""
+        response = self.send_command(f"MOVE:LEFT:{speed}")
+        return not response.startswith("ERROR")
+
+    def move_right(self, speed: int = 100) -> bool:
+        """Move right."""
+        response = self.send_command(f"MOVE:RIGHT:{speed}")
+        return not response.startswith("ERROR")
+
+    def move(self, direction: str, distance: int = 30) -> bool:
+        """Move in direction."""
+        response = self.send_command(f"MOVE:{direction}:{distance}")
+        return not response.startswith("ERROR")
+
+    def stop(self) -> bool:
+        """Stop all movement."""
+        response = self.send_command("STOP")
+        return not response.startswith("ERROR")
+
+    def look(self, direction: str) -> bool:
+        """Move servo to direction (LEFT, CENTER, RIGHT)."""
+        response = self.send_command(f"LOOK:{direction}")
+        return not response.startswith("ERROR")
+
+    def set_servo_angle(self, servo: str, angle: int) -> bool:
+        """Set servo angle."""
+        response = self.send_command(f"SERVO:{servo}:{angle}")
+        return not response.startswith("ERROR")
 
 
 class MockREXClient:
-    """Mock REX client for testing without hardware."""
+    """Mock REX for testing or when hardware unavailable."""
 
     def __init__(self):
         self._connected = False
-        self._head_position = "CENTER"
-        self._distance = 50
-        self._status = "READY"
-        self._emergency_stop = False
+        self._last_error = "Using mock REX"
 
     def connect(self) -> bool:
-        """Connect (mock)."""
         self._connected = True
         logger.info("Mock REX connected")
         return True
 
-    def disconnect(self) -> None:
-        """Disconnect (mock)."""
-        self._connected = False
-
-    def send_command(self, command: str) -> str:
-        """Send command (mock)."""
-        if self._emergency_stop:
-            return "BLOCKED"
-        
-        if command.startswith("LOOK:"):
-            self._head_position = command.split(":")[1]
-            return "OK"
-        elif command == "DIST?":
-            return f"DIST:{self._distance}"
-        elif command.startswith("MOVE:") or command.startswith("OMNI:"):
-            return "OK"
-        elif command == "STOP":
-            self._emergency_stop = True
-            self._status = "STOP"
-            return "OK"
-        elif command == "RESET":
-            self._emergency_stop = False
-            self._status = "READY"
-            return "RESET"
-        elif command == "HOME":
-            self._head_position = "CENTER"
-            return "OK"
-        elif command == "CALIBRATE":
-            return "OK"
-        elif command.startswith("BUZZER:"):
-            return "OK"
-        elif command == "STATUS?":
-            return f"STATUS:{self._status}"
-        elif command == "PING":
-            return "PONG"
-        else:
-            return "OK"
-
-    def look(self, direction: str) -> bool:
-        """Look (mock)."""
-        if self._emergency_stop:
-            return False
-        self._head_position = direction.upper()
+    def is_connected(self) -> bool:
         return True
 
-    def get_distance(self) -> int:
-        """Get distance (mock)."""
-        return self._distance
+    def get_status(self) -> dict:
+        return {
+            "connected": True,
+            "responding": True,
+            "last_error": "Using mock",
+            "consecutive_failures": 0,
+        }
 
-    def move(self, direction: str) -> bool:
-        """Move (mock)."""
-        if self._emergency_stop:
-            return False
+    def ping(self) -> bool:
         return True
 
-    def omni_move(self, direction: str) -> bool:
-        """Omni move (mock)."""
-        if self._emergency_stop:
-            return False
+    def send_command(self, command: str, retries: int = 1) -> str:
+        logger.debug(f"Mock REX: {command}")
+        return "OK"
+
+    def get_distance(self) -> float:
+        return 50.0
+
+    def move_forward(self, speed: int = 100) -> bool:
+        logger.debug(f"Mock forward: {speed}")
+        return True
+
+    def move_backward(self, speed: int = 100) -> bool:
+        logger.debug(f"Mock backward: {speed}")
+        return True
+
+    def move_left(self, speed: int = 100) -> bool:
+        logger.debug(f"Mock left: {speed}")
+        return True
+
+    def move_right(self, speed: int = 100) -> bool:
+        logger.debug(f"Mock right: {speed}")
+        return True
+
+    def move(self, direction: str, distance: int = 30) -> bool:
+        logger.debug(f"Mock move: {direction} {distance}")
         return True
 
     def stop(self) -> bool:
-        """Stop (mock)."""
-        self._emergency_stop = True
-        self._status = "STOP"
+        logger.debug("Mock stop")
         return True
 
-    def reset(self) -> bool:
-        """Reset (mock)."""
-        self._emergency_stop = False
-        self._status = "READY"
+    def look(self, direction: str) -> bool:
+        logger.debug(f"Mock look: {direction}")
         return True
 
-    def home(self) -> bool:
-        """Home (mock)."""
-        self._head_position = "CENTER"
+    def set_servo_angle(self, servo: str, angle: int) -> bool:
+        logger.debug(f"Mock servo: {servo} {angle}")
         return True
 
-    def calibrate(self) -> bool:
-        """Calibrate (mock)."""
-        return True
-
-    def buzzer(self, pattern: str = "SHORT") -> bool:
-        """Buzzer (mock)."""
-        return True
-
-    def get_status(self) -> str:
-        """Get status (mock)."""
-        return f"STATUS:{self._status}"
-
-    def ping(self) -> bool:
-        """Ping (mock)."""
-        return self._connected
-
-    def is_connected(self) -> bool:
-        """Check connection (mock)."""
-        return self._connected
+    def disconnect(self) -> None:
+        pass
 
 
-_rex_client_instance: Optional["REXClient"] = None
-
-
-def get_rex_client() -> "REXClient":
-    """Get global REX client instance."""
-    global _rex_client_instance
-    if _rex_client_instance is None:
-        if HAS_SMBUS:
-            try:
-                _rex_client_instance = REXClient()
-            except Exception:
-                _rex_client_instance = MockREXClient()
-        else:
-            _rex_client_instance = MockREXClient()
-    return _rex_client_instance
+def get_rex_client() -> REXClient:
+    """Get REX client instance."""
+    return REXClient()

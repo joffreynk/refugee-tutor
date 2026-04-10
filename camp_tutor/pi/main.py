@@ -73,14 +73,39 @@ class CampTutorRobot:
 
         config_settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.lcd = lcd5110.get_lcd()
-        self.lcd.initialize()
-        self.lcd.show_text("Camp Tutor", 0)
-        self.lcd.show_text("Initializing...", 1)
+        # Track device initialization status
+        self.device_status = {
+            "lcd": {"ok": False, "error": None},
+            "rex": {"ok": False, "error": None},
+            "camera": {"ok": False, "error": None},
+            "audio": {"ok": False, "error": None},
+        }
 
-        self.wake_detector = wake_word.WakeWordDetector()
-        self.stt = speech_to_text.SpeechToText()
-        self.tts = text_to_speech.TextToSpeech()
+        # Initialize LCD (continue even if fails)
+        try:
+            self.lcd = lcd5110.get_lcd()
+            self.lcd.initialize()
+            self.lcd.show_text("Camp Tutor", 0)
+            self.lcd.show_text("Initializing...", 1)
+            self.device_status["lcd"]["ok"] = True
+        except Exception as e:
+            self.device_status["lcd"]["error"] = str(e)
+            logger.warning(f"LCD init failed: {e}")
+            self.lcd = None
+
+        # Initialize audio (continue even if fails)
+        try:
+            self.wake_detector = wake_word.WakeWordDetector()
+            self.stt = speech_to_text.SpeechToText()
+            self.tts = text_to_speech.TextToSpeech()
+            self.device_status["audio"]["ok"] = True
+        except Exception as e:
+            self.device_status["audio"]["error"] = str(e)
+            logger.warning(f"Audio init failed: {e}")
+            self.wake_detector = None
+            self.stt = None
+            self.tts = None
+
         self.lang_detector = language_detection.get_language_detector()
         self.tutor = tutor_engine.get_tutor_engine()
         self.homework_gen = homework_generator.get_homework_generator()
@@ -90,12 +115,40 @@ class CampTutorRobot:
         self.session = session_logger.get_session_logger()
         self.vision = visual_monitor.get_visual_monitor()
 
-        self.camera_capture = get_camera()
-        self.facial_rec = get_facial_recognition()
-        self.facial_rec.initialize()
-        self.wifi = get_wifi_manager()
+        # Initialize camera (continue even if fails)
+        try:
+            self.camera_capture = get_camera()
+            self.facial_rec = get_facial_recognition()
+            self.facial_rec.initialize()
+            self.device_status["camera"]["ok"] = True
+        except Exception as e:
+            self.device_status["camera"]["error"] = str(e)
+            logger.warning(f"Camera init failed: {e}")
+            self.camera_capture = None
+            self.facial_rec = None
 
-        self.rex = rex_client.get_rex_client()
+        # Initialize WiFi (continue even if fails)
+        try:
+            self.wifi = get_wifi_manager()
+        except Exception as e:
+            logger.warning(f"WiFi init failed: {e}")
+            self.wifi = None
+
+        # Initialize REX (continue even if fails)
+        try:
+            self.rex = rex_client.get_rex_client()
+            self.rex.connect()
+            if self.rex.is_connected():
+                self.device_status["rex"]["ok"] = True
+                logger.info("REX connected")
+            else:
+                self.device_status["rex"]["error"] = "REX not responding"
+                logger.warning("REX not responding")
+        except Exception as e:
+            self.device_status["rex"]["error"] = str(e)
+            logger.warning(f"REX init failed: {e}")
+            self.rex = None
+
         self.decision = decision_manager.get_decision_manager()
 
         self.tutor.set_language("en")
@@ -104,23 +157,29 @@ class CampTutorRobot:
 
         self.decision.initialize()
 
-        wifi_status = self.wifi.get_status()
-        if wifi_status.get("connected"):
-            logger.info(f"WiFi connected: {wifi_status.get('ssid')}")
-            self.lcd.show_text(f"WiFi: {wifi_status.get('ssid')}", 1)
-        elif self.wifi.is_offline_mode():
-            logger.info("Running in offline mode")
-            self.lcd.show_text("Offline Mode", 1)
-        else:
-            self.lcd.show_text("Say 'Camp Tutor'", 1)
+        # Show status on LCD if available
+        wifi_status = self.wifi.get_status() if self.wifi else {}
+        if self.lcd and self.device_status["lcd"]["ok"]:
+            if wifi_status.get("connected"):
+                logger.info(f"WiFi connected: {wifi_status.get('ssid')}")
+                self.lcd.show_text(f"WiFi: {wifi_status.get('ssid')}", 1)
+            elif self.wifi.is_offline_mode():
+                logger.info("Running in offline mode")
+                self.lcd.show_text("Offline Mode", 1)
+            else:
+                self.lcd.show_text("Say 'Camp Tutor'", 1)
 
-        self.lcd.show_text("Camp Tutor", 0)
+            self.lcd.show_text("Camp Tutor", 0)
 
+        logger.info(f"Device status: {self.device_status}")
         logger.info("Camp Tutor initialized")
         
         from config import settings as config_settings
         web_ui.start_server_thread(host="0.0.0.0", port=config_settings.WEB_PORT)
         logger.info(f"Web server started at {config_settings.WEB_URL}")
+
+        # Update web UI with device status
+        web_ui._app_state["device_status"] = self.device_status
         
         return True
 

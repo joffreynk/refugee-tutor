@@ -1,5 +1,8 @@
 # Camp Tutor - Multi-Language Support Report
 
+**Date:** April 10, 2026  
+**Version:** 2.1
+
 ## Executive Summary
 
 This report documents the expansion of Camp Tutor's multi-language support from 5 languages to the 20 most spoken languages in the world. This enhancement enables the educational robot to serve a significantly broader global audience.
