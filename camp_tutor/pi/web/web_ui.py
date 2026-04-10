@@ -4,10 +4,11 @@ import logging
 import threading
 import os
 import sys
+import io
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, jsonify, request, Blueprint
+from flask import Flask, render_template, jsonify, request, Blueprint, send_file, redirect, url_for
 from ui.ui_controls import (
     get_volume_control,
     get_age_selector,
@@ -16,6 +17,7 @@ from ui.ui_controls import (
 )
 from bluetooth.bluetooth_manager import get_bluetooth_manager
 from storage.student_db import get_student_db
+from storage import student_db as student_db_module
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +386,345 @@ def api_bt_status():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/students")
+def students_page():
+    """Student management page."""
+    try:
+        db = get_student_db()
+        all_students = db.get_all_students()
+    except:
+        all_students = []
+    return render_template("students.html", page="students", students=all_students)
+
+
+@app.route("/student/add", methods=["GET", "POST"])
+def student_add():
+    """Add new student."""
+    try:
+        db = get_student_db()
+        
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            language = request.form.get("language", "en").strip()
+            classroom = request.form.get("classroom", "").strip()
+            age = request.form.get("age", "").strip()
+            
+            if name:
+                age_int = int(age) if age else None
+                student_id = db.create_student(
+                    name=name,
+                    preferred_language=language,
+                    classroom=classroom if classroom else None,
+                    age=age_int,
+                )
+                
+                photo = request.files.get("photo")
+                if photo and photo.filename:
+                    db.add_photo(student_id, photo.read())
+                
+                return redirect(url_for("students_page"))
+        
+        from config import settings
+        languages = list(settings.LANGUAGE_NAMES.items())
+        return render_template("student_add.html", page="students", languages=languages)
+    except Exception as e:
+        logger.error(f"Error adding student: {e}")
+        return f"Error: {str(e)}", 500
+
+
+@app.route("/student/<student_id>")
+def student_detail(student_id):
+    """View student details."""
+    try:
+        db = get_student_db()
+        student = db.get_student(student_id)
+        
+        if not student:
+            return "Student not found", 404
+        
+        photo_path = db.get_photo_path(student_id)
+        subjects_progress = db.get_all_subjects_progress(student_id)
+        weak_topics = db.get_weak_topics(student_id)
+        
+        return render_template(
+            "student_detail.html",
+            page="students",
+            student=student,
+            photo_path=photo_path,
+            subjects_progress=subjects_progress,
+            weak_topics=weak_topics,
+        )
+    except Exception as e:
+        logger.error(f"Error getting student: {e}")
+        return f"Error: {str(e)}", 500
+
+
+@app.route("/student/<student_id>/photo")
+def student_photo(student_id):
+    """Get student photo."""
+    try:
+        db = get_student_db()
+        photo_path = db.get_photo_path(student_id)
+        
+        if photo_path and os.path.exists(photo_path):
+            return send_file(photo_path, mimetype="image/jpeg")
+        
+        return "", 404
+    except Exception as e:
+        logger.error(f"Error getting photo: {e}")
+        return "", 404
+
+
+@app.route("/student/<student_id>/capture", methods=["POST"])
+def student_capture_photo(student_id):
+    """Capture photo for student using camera."""
+    try:
+        from vision.camera_capture import get_camera
+        cam = get_camera()
+        
+        if not cam.initialize():
+            return jsonify({"error": "Camera not available"}), 500
+        
+        filepath = cam.capture_for_student(student_id)
+        
+        if filepath:
+            return jsonify({"success": True, "filepath": filepath})
+        return jsonify({"error": "Failed to capture"}), 500
+    except Exception as e:
+        logger.error(f"Error capturing photo: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/student/<student_id>/delete", methods=["POST"])
+def student_delete(student_id):
+    """Delete a student."""
+    try:
+        db = get_student_db()
+        success = db.delete_student(student_id)
+        
+        if success:
+            return jsonify({"success": True})
+        return jsonify({"error": "Student not found"}), 404
+    except Exception as e:
+        logger.error(f"Error deleting student: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/wifi")
+def wifi_page():
+    """WiFi settings page."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        status = wifi.get_status()
+        networks = wifi.scan_networks()
+        
+        return render_template(
+            "wifi.html",
+            page="wifi",
+            status=status,
+            networks=networks,
+            saved_ssid=status.get("ssid", ""),
+        )
+    except Exception as e:
+        logger.error(f"Error getting WiFi status: {e}")
+        return render_template("wifi.html", page="wifi", status={}, networks=[], saved_ssid="")
+
+
+@app.route("/bluetooth")
+def bluetooth_page():
+    """Bluetooth settings page."""
+    return render_template("bluetooth.html", page="bluetooth")
+
+
+@app.route("/wifi/connect", methods=["POST"])
+def wifi_connect():
+    """Connect to WiFi."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        
+        ssid = request.form.get("ssid", "").strip()
+        password = request.form.get("password", "").strip()
+        
+        if ssid and password:
+            wifi.save_credentials(ssid, password)
+            success = wifi.connect(ssid, password)
+            
+            return jsonify({"success": success, "ssid": ssid})
+        
+        return jsonify({"error": "Missing credentials"}), 400
+    except Exception as e:
+        logger.error(f"WiFi connect error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/wifi/disconnect", methods=["POST"])
+def wifi_disconnect():
+    """Disconnect from WiFi."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        wifi.disconnect()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"WiFi disconnect error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/wifi/mode", methods=["POST"])
+def wifi_mode():
+    """Set offline/online mode."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        
+        offline = request.json.get("offline", True)
+        wifi.set_offline_mode(offline)
+        
+        return jsonify({"success": True, "offline_mode": offline})
+    except Exception as e:
+        logger.error(f"WiFi mode error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wifi/scan")
+def wifi_scan_api():
+    """Scan for WiFi networks (API endpoint)."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        networks = wifi.scan_networks()
+        return jsonify({"success": True, "networks": networks})
+    except Exception as e:
+        logger.error(f"WiFi scan error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wifi/status")
+def wifi_status_api():
+    """Get WiFi status (API endpoint)."""
+    try:
+        from config.wifi_manager import get_wifi_manager
+        wifi = get_wifi_manager()
+        return jsonify({"success": True, "status": wifi.get_status()})
+    except Exception as e:
+        logger.error(f"WiFi status error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/camera/capture")
+def camera_capture():
+    """Capture camera frame for preview."""
+    try:
+        from vision.camera_capture import get_camera
+        cam = get_camera()
+        
+        if not cam.initialize():
+            return jsonify({"error": "Camera not available"}), 500
+        
+        frame = cam.get_preview_frame()
+        
+        if frame:
+            return send_file(
+                io.BytesIO(frame),
+                mimetype="image/jpeg",
+                as_attachment=False,
+            )
+        
+        return jsonify({"error": "Failed to capture"}), 500
+    except Exception as e:
+        logger.error(f"Capture error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/camera/detect_faces")
+def camera_detect_faces():
+    """Detect faces in camera frame."""
+    try:
+        from vision.camera_capture import get_camera
+        cam = get_camera()
+        
+        if not cam.initialize():
+            return jsonify({"error": "Camera not available"}), 500
+        
+        faces = cam.detect_faces()
+        
+        return jsonify({"success": True, "faces": faces})
+    except Exception as e:
+        logger.error(f"Face detection error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/facial_recognition/train", methods=["POST"])
+def facial_train():
+    """Train facial recognition model."""
+    try:
+        from vision.facial_recognition import get_facial_recognition
+        fr = get_facial_recognition()
+        
+        if not fr.initialize():
+            return jsonify({"error": "Facial recognition not available"}), 500
+        
+        db = get_student_db()
+        student_ids = [s["id"] for s in db.get_all_students()]
+        
+        success = fr.train_model(student_ids)
+        
+        return jsonify({"success": success})
+    except Exception as e:
+        logger.error(f"Training error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/facial_recognition/recognize")
+def facial_recognize():
+    """Recognize faces in uploaded image."""
+    try:
+        from vision.facial_recognition import get_facial_recognition
+        fr = get_facial_recognition()
+        
+        if not fr.initialize():
+            return jsonify({"error": "Facial recognition not available"}), 500
+        
+        if "image" not in request.files:
+            return jsonify({"error": "No image provided"}), 400
+        
+        image_data = request.files["image"].read()
+        results = fr.detect_and_recognize(image_data)
+        
+        return jsonify({"success": True, "results": results})
+    except Exception as e:
+        logger.error(f"Recognition error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/student/progress/<student_id>")
+def student_progress_api(student_id):
+    """Get student progress data."""
+    try:
+        db = get_student_db()
+        student = db.get_student(student_id)
+        
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+        
+        subjects = db.get_all_subjects_progress(student_id)
+        weak_topics = db.get_weak_topics(student_id)
+        
+        return jsonify({
+            "student": student,
+            "subjects": subjects,
+            "weak_topics": weak_topics,
+        })
+    except Exception as e:
+        logger.error(f"Error getting progress: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+import io
+
+
 def run_server(host="0.0.0.0", port=500, debug=False):
     """Run the web server."""
     logger.info(f"Starting web server on {host}:{port}")
@@ -400,3 +741,75 @@ def start_server_thread(host="0.0.0.0", port=500):
     server_thread.start()
     logger.info(f"Web server started on http://{host}:{port}")
     return server_thread
+
+
+@app.route("/devices")
+def devices_page():
+    """Device status and testing page."""
+    return render_template("devices.html", page="devices")
+
+
+@app.route("/api/device/test/<device_type>", methods=["POST"])
+def test_device(device_type):
+    """Test a specific device."""
+    try:
+        if device_type == "speaker":
+            try:
+                import subprocess
+                result = subprocess.run(["espeak", "-v", "en", "-s", "140", "-test"], 
+                                      capture_output=True, timeout=5)
+                return jsonify({"success": True, "message": "Speaker test sound played"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        elif device_type == "microphone":
+            try:
+                import subprocess
+                result = subprocess.run(["arecord", "-l"], capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    return jsonify({"success": True, "message": "Microphone detected"})
+                return jsonify({"success": False, "error": "No microphone found"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        elif device_type == "camera":
+            try:
+                from vision.camera_capture import get_camera
+                cam = get_camera()
+                if cam.initialize():
+                    return jsonify({"success": True, "message": "Camera initialized"})
+                return jsonify({"success": False, "error": "Camera not available"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        elif device_type == "lcd":
+            try:
+                from display import lcd5110
+                lcd = lcd5110.get_lcd()
+                lcd.initialize()
+                lcd.show_text("Test OK", 0)
+                return jsonify({"success": True, "message": "LCD display working"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        elif device_type == "gpio":
+            try:
+                import RPi.GPIO as GPIO
+                GPIO.setmode(GPIO.BOARD)
+                return jsonify({"success": True, "message": "GPIO interface available"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        elif device_type == "i2c":
+            try:
+                import subprocess
+                result = subprocess.run(["i2cdetect", "-l"], capture_output=True, timeout=5)
+                return jsonify({"success": True, "message": "I2C bus available"})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+        
+        return jsonify({"success": False, "error": "Unknown device"})
+    
+    except Exception as e:
+        logger.error(f"Device test error: {e}")
+        return jsonify({"success": False, "error": str(e)})

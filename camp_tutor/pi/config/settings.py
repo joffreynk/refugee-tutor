@@ -7,6 +7,10 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
 
+HOSTNAME = "refugeetutor"
+WEB_PORT = 5000
+WEB_URL = f"http://{HOSTNAME}:{WEB_PORT}/"
+
 I2C_SCL_PIN = 22
 I2C_SDA_PIN = 21
 I2C_ADDRESS = 0x42

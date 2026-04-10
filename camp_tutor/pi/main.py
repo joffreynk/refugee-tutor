@@ -7,7 +7,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from config import settings
+from config import settings as config_settings
+from config.wifi_manager import get_wifi_manager
+from web import web_ui
 
 from audio import wake_word, speech_to_text, text_to_speech, audio_device
 from ai import (
@@ -19,10 +21,12 @@ from ai import (
     tflite_models,
 )
 from vision import camera, visual_monitor
+from vision.camera_capture import get_camera
+from vision.facial_recognition import get_facial_recognition
 from display import lcd5110
 from storage import student_db, session_logger
+from storage.student_db import get_student_db
 from control import rex_client, decision_manager
-from web import web_ui
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,9 @@ class CampTutorRobot:
         self.session: Optional[session_logger.SessionLogger] = None
         self.lcd: Optional[lcd5110.LCD5110] = None
         self.vision: Optional[visual_monitor.VisualMonitor] = None
+        self.camera_capture = None
+        self.facial_rec = None
+        self.wifi = None
         self.rex: Optional[rex_client.REXClient] = None
         self.decision: Optional[decision_manager.DecisionManager] = None
         
@@ -58,13 +65,13 @@ class CampTutorRobot:
     def initialize(self) -> bool:
         """Initialize all subsystems."""
         logging.basicConfig(
-            level=settings.LOG_LEVEL,
+            level=config_settings.LOG_LEVEL,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
 
         logger.info("Initializing Camp Tutor...")
 
-        settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        config_settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         self.lcd = lcd5110.get_lcd()
         self.lcd.initialize()
@@ -83,6 +90,11 @@ class CampTutorRobot:
         self.session = session_logger.get_session_logger()
         self.vision = visual_monitor.get_visual_monitor()
 
+        self.camera_capture = get_camera()
+        self.facial_rec = get_facial_recognition()
+        self.facial_rec.initialize()
+        self.wifi = get_wifi_manager()
+
         self.rex = rex_client.get_rex_client()
         self.decision = decision_manager.get_decision_manager()
 
@@ -90,15 +102,25 @@ class CampTutorRobot:
         self.homework_gen.set_language("en")
         self.assessment.set_language("en")
 
-        # Initialize decision manager (handles REX connection gracefully)
         self.decision.initialize()
 
+        wifi_status = self.wifi.get_status()
+        if wifi_status.get("connected"):
+            logger.info(f"WiFi connected: {wifi_status.get('ssid')}")
+            self.lcd.show_text(f"WiFi: {wifi_status.get('ssid')}", 1)
+        elif self.wifi.is_offline_mode():
+            logger.info("Running in offline mode")
+            self.lcd.show_text("Offline Mode", 1)
+        else:
+            self.lcd.show_text("Say 'Camp Tutor'", 1)
+
         self.lcd.show_text("Camp Tutor", 0)
-        self.lcd.show_text("Say 'Camp Tutor'", 1)
 
         logger.info("Camp Tutor initialized")
         
-        web_ui.start_server_thread(host="0.0.0.0", port=500)
+        from config import settings as config_settings
+        web_ui.start_server_thread(host="0.0.0.0", port=config_settings.WEB_PORT)
+        logger.info(f"Web server started at {config_settings.WEB_URL}")
         
         return True
 
@@ -153,7 +175,7 @@ class CampTutorRobot:
             if self.assessment:
                 self.assessment.set_language(detected)
 
-            lang_name = settings.LANGUAGE_NAMES.get(detected, detected)
+            lang_name = config_settings.LANGUAGE_NAMES.get(detected, detected)
             if self.tts:
                 self.tts.speak(f"Okay, let's learn in {lang_name}")
         else:
@@ -213,7 +235,7 @@ class CampTutorRobot:
         if not self.session_active:
             return
 
-        if time.time() - self.last_activity_time > settings.INACTIVITY_TIMEOUT:
+        if time.time() - self.last_activity_time > config_settings.INACTIVITY_TIMEOUT:
             logger.info("Inactivity timeout, ending session")
             self.end_session()
 
@@ -309,6 +331,22 @@ class CampTutorRobot:
         expected_words = expected_lower.split()
         matches = sum(1 for w in expected_words if w in words)
         return matches >= len(expected_words) * 0.5
+
+    def record_student_progress(self, subject: str, topic: str, correct: bool, score: float = 1.0) -> None:
+        """Record student progress for a subject/topic."""
+        if not self.current_student_id or not self.db:
+            return
+        
+        if not correct:
+            score = 0.0
+        
+        self.db.update_subject_progress(
+            self.current_student_id,
+            subject,
+            topic,
+            score
+        )
+        logger.info(f"Progress recorded: {subject}/{topic} - {'correct' if correct else 'incorrect'}")
 
 
 def main():

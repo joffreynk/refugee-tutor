@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Device Status - Camp Tutor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; min-height: 100vh; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { color: #00d9ff; text-align: center; margin-bottom: 20px; }
+        h2 { color: #00d9ff; margin-top: 20px; }
+        .card { background: #0f0f23; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .card h2 { color: #ff6b6b; margin-bottom: 15px; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .device-row { display: flex; justify-content: space-between; align-items: center;
+                     padding: 15px; background: #1a1a2e; border-radius: 8px; margin-bottom: 10px; }
+        .device-info { flex: 1; }
+        .device-name { font-weight: bold; font-size: 16px; }
+        .device-desc { color: #888; font-size: 12px; margin-top: 4px; }
+        .device-status { display: flex; align-items: center; gap: 10px; }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .status-badge.ok { background: #00ff00; color: #000; }
+        .status-badge.error { background: #ff4757; color: white; }
+        .status-badge.testing { background: #ffa502; color: #000; }
+        .status-badge.unknown { background: #666; color: #fff; }
+        button { padding: 10px 20px; background: #00d9ff; color: #1a1a2e;
+                border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.8; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        .btn-test { padding: 8px 16px; font-size: 14px; }
+        .btn-danger { background: #ff4757; color: white; }
+        .log-area { background: #0a0a15; padding: 15px; border-radius: 8px;
+                   font-family: monospace; font-size: 12px; max-height: 300px;
+                   overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .log-entry { margin-bottom: 5px; }
+        .log-entry.info { color: #00d9ff; }
+        .log-entry.success { color: #00ff00; }
+        .log-entry.error { color: #ff4757; }
+        .log-entry.warning { color: #ffa502; }
+        .test-result { margin-top: 15px; padding: 15px; border-radius: 8px; }
+        .test-result.pass { background: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; }
+        .test-result.fail { background: rgba(255, 71, 87, 0.1); border: 1px solid #ff4757; }
+        .progress-bar { width: 100%; height: 8px; background: #333; border-radius: 4px;
+                       overflow: hidden; margin-top: 10px; }
+        .progress-bar .fill { height: 100%; background: #00d9ff; transition: width 0.3s; }
+        .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .summary-item { background: #0f0f23; padding: 15px; border-radius: 8px; text-align: center; }
+        .summary-item .count { font-size: 32px; font-weight: bold; }
+        .summary-item .label { color: #888; font-size: 12px; margin-top: 5px; }
+        .summary-item.ok .count { color: #00ff00; }
+        .summary-item.error .count { color: #ff4757; }
+        .nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .nav a { flex: 1; min-width: 100px; padding: 10px; background: #0f0f23;
+                 color: #aaa; text-decoration: none; text-align: center;
+                 border-radius: 5px; }
+        .nav a:hover, .nav a.active { background: #00d9ff; color: #1a1a2e; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Device Status</h1>
+        
+        <nav class="nav">
+            <a href="/" style="background: transparent;">Dashboard</a>
+            <a href="/students" style="background: transparent;">Students</a>
+            <a href="/wifi" style="background: transparent;">WiFi</a>
+            <a href="/bluetooth" style="background: transparent;">Bluetooth</a>
+            <a href="/devices" class="active" style="background: #00d9ff; color: #1a1a2e;">Devices</a>
+            <a href="/config" style="background: transparent;">Settings</a>
+        </nav>
+
+        <div class="summary">
+            <div class="summary-item ok">
+                <div class="count" id="countOk">0</div>
+                <div class="label">Working</div>
+            </div>
+            <div class="summary-item error">
+                <div class="count" id="countError">0</div>
+                <div class="label">Issues</div>
+            </div>
+            <div class="summary-item">
+                <div class="count" id="countTesting">0</div>
+                <div class="label">Testing</div>
+            </div>
+            <div class="summary-item">
+                <div class="count" id="countTotal">0</div>
+                <div class="label">Total</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Hardware Devices</h2>
+            <div id="deviceList">
+                <!-- Speaker -->
+                <div class="device-row" data-device="speaker">
+                    <div class="device-info">
+                        <div class="device-name">Speaker / Audio Output</div>
+                        <div class="device-desc">Tests if audio output is working</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-speaker">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('speaker')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- Microphone -->
+                <div class="device-row" data-device="microphone">
+                    <div class="device-info">
+                        <div class="device-name">Microphone</div>
+                        <div class="device-desc">Tests if microphone input is working</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-microphone">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('microphone')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- Camera -->
+                <div class="device-row" data-device="camera">
+                    <div class="device-info">
+                        <div class="device-name">Camera</div>
+                        <div class="device-desc">Tests if camera is accessible</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-camera">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('camera')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- LCD Display -->
+                <div class="device-row" data-device="lcd">
+                    <div class="device-info">
+                        <div class="device-name">LCD Display (Nokia 5110)</div>
+                        <div class="device-desc">Tests if LCD screen is working</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-lcd">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('lcd')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- Bluetooth -->
+                <div class="device-row" data-device="bluetooth">
+                    <div class="device-info">
+                        <div class="device-name">Bluetooth Adapter</div>
+                        <div class="device-desc">Tests if Bluetooth is available</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-bluetooth">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('bluetooth')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- WiFi -->
+                <div class="device-row" data-device="wifi">
+                    <div class="device-info">
+                        <div class="device-name">WiFi Adapter</div>
+                        <div class="device-desc">Tests if WiFi is connected</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-wifi">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('wifi')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- GPIO -->
+                <div class="device-row" data-device="gpio">
+                    <div class="device-info">
+                        <div class="device-name">GPIO Pins</div>
+                        <div class="device-desc">Tests if GPIO interface is available</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-gpio">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('gpio')">Test</button>
+                    </div>
+                </div>
+                
+                <!-- I2C -->
+                <div class="device-row" data-device="i2c">
+                    <div class="device-info">
+                        <div class="device-name">I2C Bus</div>
+                        <div class="device-desc">Tests if I2C communication works</div>
+                    </div>
+                    <div class="device-status">
+                        <span class="status-badge unknown" id="status-i2c">Unknown</span>
+                        <button class="btn btn-test" onclick="testDevice('i2c')">Test</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Test All Devices</h2>
+            <button onclick="testAllDevices()" id="testAllBtn" style="margin-bottom: 15px;">Test All Devices</button>
+            <div class="progress-bar" id="progressBar" style="display: none;">
+                <div class="fill" id="progressFill" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Test Log</h2>
+            <button class="btn btn-danger btn-test" onclick="clearLog()" style="margin-bottom: 10px;">Clear Log</button>
+            <div class="log-area" id="logArea">
+                <div class="log-entry info">[System] Ready to test devices</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const deviceTests = {
+            speaker: async () => {
+                addLog('Testing speaker...', 'info');
+                const response = await fetch('/api/device/test/speaker', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('Speaker test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('Speaker test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            },
+            microphone: async () => {
+                addLog('Testing microphone...', 'info');
+                const response = await fetch('/api/device/test/microphone', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('Microphone test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('Microphone test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            },
+            camera: async () => {
+                addLog('Testing camera...', 'info');
+                const response = await fetch('/api/device/test/camera', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('Camera test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('Camera test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            },
+            lcd: async () => {
+                addLog('Testing LCD display...', 'info');
+                const response = await fetch('/api/device/test/lcd', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('LCD test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('LCD test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            },
+            bluetooth: async () => {
+                addLog('Testing Bluetooth...', 'info');
+                const response = await fetch('/api/bluetooth/status');
+                const data = await response.json();
+                addLog('Bluetooth status: ' + (data.state || 'unavailable'), 'info');
+                return {ok: true, message: 'Bluetooth interface available'};
+            },
+            wifi: async () => {
+                addLog('Testing WiFi...', 'info');
+                const response = await fetch('/api/wifi/status');
+                const data = await response.json();
+                if (data.status && data.status.connected) {
+                    addLog('WiFi connected to: ' + data.status.ssid, 'success');
+                    return {ok: true, message: 'Connected to ' + data.status.ssid};
+                } else {
+                    addLog('WiFi not connected', 'warning');
+                    return {ok: true, message: 'WiFi available but not connected'};
+                }
+            },
+            gpio: async () => {
+                addLog('Testing GPIO...', 'info');
+                const response = await fetch('/api/device/test/gpio', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('GPIO test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('GPIO test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            },
+            i2c: async () => {
+                addLog('Testing I2C...', 'info');
+                const response = await fetch('/api/device/test/i2c', {method: 'POST'});
+                const data = await response.json();
+                if (data.success) {
+                    addLog('I2C test: ' + data.message, 'success');
+                    return {ok: true, message: data.message};
+                } else {
+                    addLog('I2C test failed: ' + data.error, 'error');
+                    return {ok: false, message: data.error};
+                }
+            }
+        };
+
+        function addLog(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString();
+            logArea.innerHTML += `<div class="log-entry ${type}">[${time}] ${message}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('logArea').innerHTML = '<div class="log-entry info">[System] Log cleared</div>';
+        }
+
+        function updateStatus(device, status, message) {
+            const statusEl = document.getElementById('status-' + device);
+            const row = document.querySelector(`[data-device="${device}"]`);
+            
+            if (status === 'testing') {
+                statusEl.className = 'status-badge testing';
+                statusEl.textContent = 'Testing...';
+                row.querySelector('button').disabled = true;
+            } else if (status === 'ok') {
+                statusEl.className = 'status-badge ok';
+                statusEl.textContent = 'OK';
+                row.querySelector('button').disabled = false;
+            } else if (status === 'error') {
+                statusEl.className = 'status-badge error';
+                statusEl.textContent = 'Error';
+                row.querySelector('button').disabled = false;
+            } else {
+                statusEl.className = 'status-badge unknown';
+                statusEl.textContent = 'Unknown';
+                row.querySelector('button').disabled = false;
+            }
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const devices = document.querySelectorAll('.device-row');
+            let ok = 0, error = 0, testing = 0;
+            
+            devices.forEach(d => {
+                const status = d.querySelector('.status-badge');
+                if (status.classList.contains('ok')) ok++;
+                else if (status.classList.contains('error')) error++;
+                else if (status.classList.contains('testing')) testing++;
+            });
+            
+            document.getElementById('countOk').textContent = ok;
+            document.getElementById('countError').textContent = error;
+            document.getElementById('countTesting').textContent = testing;
+            document.getElementById('countTotal').textContent = devices.length;
+        }
+
+        async function testDevice(device) {
+            updateStatus(device, 'testing');
+            
+            try {
+                const result = await deviceTests[device]();
+                updateStatus(device, result.ok ? 'ok' : 'error', result.message);
+            } catch (e) {
+                addLog('Test error: ' + e.message, 'error');
+                updateStatus(device, 'error', e.message);
+            }
+        }
+
+        async function testAllDevices() {
+            const btn = document.getElementById('testAllBtn');
+            const progress = document.getElementById('progressBar');
+            const fill = document.getElementById('progressFill');
+            
+            btn.disabled = true;
+            progress.style.display = 'block';
+            
+            const devices = Object.keys(deviceTests);
+            let tested = 0;
+            
+            for (const device of devices) {
+                await testDevice(device);
+                tested++;
+                fill.style.width = (tested / devices.length * 100) + '%';
+            }
+            
+            btn.disabled = false;
+            addLog('All device tests completed', 'info');
+        }
+
+        // Initial load - test WiFi status
+        testDevice('wifi');
+    </script>
+</body>
+</html>

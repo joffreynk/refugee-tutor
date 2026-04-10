@@ -1,28 +1,31 @@
-"""Nokia LCD 5110 display driver."""
+"""Nokia LCD 5110 display driver using CircuitPython library."""
 
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional
+from pathlib import Path
 
 from config import settings
 
 if TYPE_CHECKING:
-    import Adafruit_Nokia_LCD
-    import Adafruit_GPIO
     import PIL
+    import digitalio
+    import busio
 
 logger = logging.getLogger(__name__)
 
 try:
-    import Adafruit_Nokia_LCD as NokiaLCD
-    import Adafruit_GPIO as GPIO
+    from adafruit_pcd8544 import PCD8544
+    import board
+    import busio
+    import digitalio
     HAS_NOKIA_LCD = True
 except ImportError:
     HAS_NOKIA_LCD = False
 
 
 class LCD5110:
-    """Nokia 5110 LCD display driver."""
+    """Nokia 5110 LCD display driver using CircuitPython."""
 
     def __init__(
         self,
@@ -32,37 +35,48 @@ class LCD5110:
         self.width = width
         self.height = height
         self.disp: Optional[Any] = None
-        self.image: Optional[Any] = None
-        self.draw: Optional[Any] = None
+        self._spi = None
+        self._dc = None
+        self._rst = None
+        self._cs = None
         self._initialized = False
 
     def initialize(self, spi=None, gpio=None) -> bool:
         """Initialize the LCD."""
         if not HAS_NOKIA_LCD:
-            logger.warning("Nokia LCD library not available")
+            logger.warning("CircuitPython Nokia LCD library not available, using mock")
             return False
 
         try:
-            if spi is None:
-                import Adafruit_GPIO.SPI as SPI
-                spi = SPI.SpiDev(0, 0, max_speed_hz=4000000)
+            import board
+            import digitalio
 
-            if gpio is None:
-                import Adafruit_GPIO.PCF8574 as PCF8574
-                gpio = GPIO.GPIO.get_platform_gpio()
+            self._spi = board.SPI()
 
-            self.disp = NokiaLCD.PCD8544(
-                spi,
-                gpio,
-                dc=23,
-                rst=24,
-                cs=8,
+            self._dc = digitalio.DigitalInOut(board.D23)
+            self._dc.direction = digitalio.Direction.OUTPUT
+
+            self._rst = digitalio.DigitalInOut(board.D24)
+            self._rst.direction = digitalio.Direction.OUTPUT
+
+            self._cs = digitalio.DigitalInOut(board.D8)
+            self._cs.direction = digitalio.Direction.OUTPUT
+
+            self.disp = PCD8544(
+                self._spi,
+                self._dc,
+                self._rst,
+                self._cs,
+                baudrate=4000000,
             )
 
-            self.disp.begin(contrast=settings.LCD_CONTRAST)
+            self.disp.contrast = 60
+            self.disp.fill(0)
+            self.disp.show()
+
             self._initialized = True
             self.clear()
-            logger.info("LCD initialized")
+            logger.info("LCD initialized (CircuitPython)")
             return True
 
         except Exception as e:
@@ -71,26 +85,37 @@ class LCD5110:
 
     def clear(self) -> None:
         """Clear the display."""
-        if not self._initialized:
+        if not self._initialized or self.disp is None:
             return
-        self.disp.clear()
+        self.disp.fill(0)
+        self.disp.show()
 
     def show_text(self, text: str, line: int = 0) -> None:
         """Show text on a specific line."""
-        if not self._initialized:
+        if not self._initialized or self.disp is None:
             return
 
         try:
             from PIL import Image, ImageDraw, ImageFont
-            self.image = Image.new("1", (self.width, self.height))
-            self.draw = ImageDraw.Draw(self.image)
+
+            img = Image.new("1", (self.width, self.height))
+            draw = ImageDraw.Draw(img)
 
             font = ImageFont.load_default()
-            self.draw.text((0, line * 8), text, font=font, fill=255)
 
-            self.disp.image(self.image)
-            self.disp.display()
+            text_to_show = text[:16]
+            y_pos = line * 8
+            draw.text((0, y_pos), text_to_show, font=font, fill=255)
 
+            self.disp.image(img)
+            self.disp.show()
+
+        except ImportError:
+            logger.warning("PIL not available, using simple text")
+            if line == 0:
+                self.disp.fill(0)
+                self.disp.text(text[:16], 0, 0)
+                self.disp.show()
         except Exception as e:
             logger.error(f"Show text failed: {e}")
 
@@ -102,53 +127,55 @@ class LCD5110:
         language: Optional[str] = None,
     ) -> None:
         """Show full status screen."""
-        if not self._initialized:
+        if not self._initialized or self.disp is None:
             return
 
         try:
             from PIL import Image, ImageDraw, ImageFont
-            self.image = Image.new("1", (self.width, self.height))
-            self.draw = ImageDraw.Draw(self.image)
+
+            img = Image.new("1", (self.width, self.height))
+            draw = ImageDraw.Draw(img)
 
             font = ImageFont.load_default()
 
-            self.draw.text((0, 0), f"Camp Tutor", font=font, fill=255)
-            self.draw.text((0, 8), f"State: {state}", font=font, fill=255)
+            draw.text((0, 0), "Camp Tutor", font=font, fill=255)
+            draw.text((0, 8), f"State: {state[:11]}", font=font, fill=255)
 
             if language:
-                self.draw.text((0, 16), f"Lang: {language[:10]}", font=font, fill=255)
+                draw.text((0, 16), f"Lang: {language[:10]}", font=font, fill=255)
             elif student:
-                self.draw.text((0, 16), f"Student: {student[:12]}", font=font, fill=255)
+                draw.text((0, 16), f"Student: {student[:10]}", font=font, fill=255)
 
             if topic:
-                self.draw.text((0, 24), f"Topic: {topic[:12]}", font=font, fill=255)
+                draw.text((0, 24), f"Topic: {topic[:12]}", font=font, fill=255)
 
-            self.disp.image(self.image)
-            self.disp.display()
+            self.disp.image(img)
+            self.disp.show()
 
         except Exception as e:
             logger.error(f"Show status failed: {e}")
 
     def show_progress(self, progress: int, total: int) -> None:
         """Show progress bar."""
-        if not self._initialized:
+        if not self._initialized or self.disp is None:
             return
 
         try:
             from PIL import Image, ImageDraw, ImageFont
-            self.image = Image.new("1", (self.width, self.height))
-            self.draw = ImageDraw.Draw(self.image)
+
+            img = Image.new("1", (self.width, self.height))
+            draw = ImageDraw.Draw(img)
 
             font = ImageFont.load_default()
 
             bar_width = (self.width - 4) * progress // max(total, 1)
-            self.draw.rectangle((2, 30, self.width - 2, 38), outline=255, fill=0)
-            self.draw.rectangle((2, 30, 2 + bar_width, 38), fill=255)
+            draw.rectangle((2, 30, self.width - 2, 38), outline=255, fill=0)
+            draw.rectangle((2, 30, 2 + bar_width, 38), fill=255)
 
-            self.draw.text((0, 40), f"{progress}/{total}", font=font, fill=255)
+            draw.text((0, 40), f"{progress}/{total}", font=font, fill=255)
 
-            self.disp.image(self.image)
-            self.disp.display()
+            self.disp.image(img)
+            self.disp.show()
 
         except Exception as e:
             logger.error(f"Show progress failed: {e}")
@@ -208,10 +235,10 @@ class MockLCD5110:
         pass
 
 
-_lcd_instance: Optional[LCD5110] = None
+_lcd_instance: Optional[Any] = None
 
 
-def get_lcd() -> LCD5110:
+def get_lcd() -> Any:
     """Get global LCD instance."""
     global _lcd_instance
     if _lcd_instance is None:
