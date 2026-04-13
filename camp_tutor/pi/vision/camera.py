@@ -42,8 +42,9 @@ class Camera:
             return False
 
         try:
-            self.camera = Picamera2(self.width, self.height)
-            self.camera.configure()
+            self.camera = Picamera2()
+            config = self.camera.create_still_configuration()
+            self.camera.configure(config)
             self.camera.start()
             logger.info("Camera initialized")
             return True

@@ -1,6 +1,8 @@
-"""REX I2C client module - resilient to hardware failures."""
+"""REX Serial USB client module."""
 
+import glob
 import logging
+import os
 import time
 from typing import Any, Optional
 
@@ -9,44 +11,57 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 try:
-    import smbus2 as smbus
-    HAS_SMBUS = True
+    import serial
+    HAS_SERIAL = True
 except ImportError:
-    try:
-        import smbus
-        HAS_SMBUS = True
-    except ImportError:
-        HAS_SMBUS = False
+    HAS_SERIAL = False
+    logger.warning("Serial library not available")
+
+
+def _find_rex_serial_port() -> str:
+    """Auto-detect REX serial port."""
+    if os.path.exists(settings.REX_SERIAL_PORT):
+        return settings.REX_SERIAL_PORT
+    
+    patterns = [
+        "/dev/ttyUSB*",
+        "/dev/ttyACM*",
+        "/dev/cu.usbserial-*",
+        "/dev/cu.usbmodem*",
+    ]
+    
+    for pattern in patterns:
+        ports = glob.glob(pattern)
+        if ports:
+            ports.sort()
+            return ports[0]
+    
+    return settings.REX_SERIAL_PORT
 
 
 class REXClient:
-    """I2C client for REX controller - resilient to connection failures."""
+    """Serial USB client for REX robot controller."""
 
-    def __init__(
-        self,
-        address: int = settings.I2C_ADDRESS,
-        bus_number: int = 1,
-    ):
-        self.address = address
-        self.bus_number = bus_number
-        self.bus: Optional[Any] = None
+    def __init__(self, port: str = None, baudrate: int = None):
+        self.port = port or _find_rex_serial_port()
+        self.baudrate = baudrate or settings.REX_SERIAL_BAUDRATE
+        self.serial: Optional[serial.Serial] = None
         self._connected = False
         self._last_error: Optional[str] = None
-        self._consecutive_failures = 0
-        self._max_failures = 5
 
     def connect(self) -> bool:
-        """Connect to REX controller."""
-        if not HAS_SMBUS:
-            self._last_error = "SMBus not available"
-            logger.warning("SMBus not available")
+        """Connect to REX via Serial USB."""
+        if not HAS_SERIAL:
+            self._last_error = "PySerial not available"
+            logger.warning("PySerial not available")
             return False
 
         try:
-            self.bus = smbus.SMBus(self.bus_number)
+            import serial
+            self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
+            time.sleep(0.5)
             self._connected = True
-            self._consecutive_failures = 0
-            logger.info(f"Connected to REX at 0x{self.address:02X}")
+            logger.info(f"Connected to REX on {self.port}")
             return True
         except Exception as e:
             self._last_error = str(e)
@@ -54,66 +69,66 @@ class REXClient:
             return False
 
     def is_connected(self) -> bool:
-        """Check if REX is connected and responding."""
-        return self._connected and self._consecutive_failures < self._max_failures
-
-    def get_status(self) -> dict:
-        """Get REX status for device monitoring."""
-        return {
-            "connected": self._connected,
-            "responding": self._consecutive_failures < self._max_failures,
-            "last_error": self._last_error,
-            "consecutive_failures": self._consecutive_failures,
-        }
+        """Check if REX is connected."""
+        return self._connected and self.serial is not None
 
     def disconnect(self) -> None:
         """Disconnect from REX."""
         self._connected = False
-        if self.bus:
+        if self.serial:
             try:
-                self.bus.close()
+                self.serial.close()
             except Exception:
                 pass
-            self.bus = None
+            self.serial = None
         logger.info("Disconnected from REX")
 
-    def send_command(self, command: str, retries: int = 1) -> str:
-        """Send command with minimal retries - fail fast."""
+    def _write_command(self, command: str) -> bool:
+        """Write command to REX."""
         if not self.is_connected():
-            self._consecutive_failures += 1
-            return f"ERROR:REX_NOT_AVAILABLE"
-
+            return False
         try:
-            command_bytes = command.encode("ascii")[:31]
-            self.bus.write_i2c_block_data(
-                self.address,
-                0x00,
-                list(command_bytes) + [0] * (32 - len(command_bytes)),
-            )
-
-            time.sleep(0.02)
-
-            response_bytes = self.bus.read_i2c_block_data(self.address, 0x00, 32)
-            response = bytes(response_bytes).decode("ascii").strip("\x00")
-
-            if response and not response.startswith("ERROR"):
-                self._consecutive_failures = 0
-                return response
-
-            self._consecutive_failures += 1
-            self._last_error = response
-            return response
-
+            self.serial.write(f"{command}\n".encode())
+            self.serial.flush()
+            return True
         except Exception as e:
-            self._consecutive_failures += 1
             self._last_error = str(e)
-            logger.debug(f"REX command error: {e}")
-            return f"ERROR:{type(e).__name__}"
+            return False
+
+    def _read_response(self, timeout: float = 1.0) -> str:
+        """Read response from REX."""
+        if not self.is_connected():
+            return "ERROR:NOT_CONNECTED"
+        try:
+            self.serial.timeout = timeout
+            response = self.serial.readline()
+            return response.decode().strip() if response else ""
+        except Exception as e:
+            self._last_error = str(e)
+            return f"ERROR:{e}"
+
+    def send_command(self, command: str, retries: int = 1) -> str:
+        """Send command and get response."""
+        if not self.is_connected():
+            if retries > 0:
+                self.connect()
+            if not self.is_connected():
+                return "ERROR:REX_NOT_AVAILABLE"
+
+        for attempt in range(retries + 1):
+            if self._write_command(command):
+                response = self._read_response()
+                if response and not response.startswith("ERROR"):
+                    return response
+            time.sleep(0.1)
+        
+        return self._last_error or "ERROR:NO_RESPONSE"
 
     def ping(self) -> bool:
         """Ping REX to check if alive."""
-        response = self.send_command("STATUS?", retries=1)
-        return response == "OK" and self._consecutive_failures < self._max_failures
+        response = self.send_command("STATUS?")
+        logger.info(f"REX ping: '{response}'")
+        return not response.startswith("ERROR") and response != ""
 
     def get_distance(self) -> float:
         """Get distance from ultrasonic sensor."""
@@ -156,7 +171,7 @@ class REXClient:
         return not response.startswith("ERROR")
 
     def look(self, direction: str) -> bool:
-        """Move servo to direction (LEFT, CENTER, RIGHT)."""
+        """Move camera head (LEFT, CENTER, RIGHT)."""
         response = self.send_command(f"LOOK:{direction}")
         return not response.startswith("ERROR")
 
@@ -165,76 +180,73 @@ class REXClient:
         response = self.send_command(f"SERVO:{servo}:{angle}")
         return not response.startswith("ERROR")
 
+    def get_status(self) -> dict:
+        """Get REX status."""
+        return {
+            "connected": self._connected,
+            "port": self.port,
+            "last_error": self._last_error,
+        }
+
 
 class MockREXClient:
-    """Mock REX for testing or when hardware unavailable."""
+    """Mock REX client for testing without hardware."""
 
-    def __init__(self):
+    def __init__(self, port: str = None, baudrate: int = None):
+        self.port = port or "/dev/ttyUSB0"
+        self.baudrate = baudrate or 9600
         self._connected = False
-        self._last_error = "Using mock REX"
 
     def connect(self) -> bool:
         self._connected = True
-        logger.info("Mock REX connected")
         return True
 
     def is_connected(self) -> bool:
-        return True
+        return False
 
-    def get_status(self) -> dict:
-        return {
-            "connected": True,
-            "responding": True,
-            "last_error": "Using mock",
-            "consecutive_failures": 0,
-        }
+    def disconnect(self) -> None:
+        self._connected = False
 
     def ping(self) -> bool:
         return True
-
-    def send_command(self, command: str, retries: int = 1) -> str:
-        logger.debug(f"Mock REX: {command}")
-        return "OK"
 
     def get_distance(self) -> float:
         return 50.0
 
     def move_forward(self, speed: int = 100) -> bool:
-        logger.debug(f"Mock forward: {speed}")
         return True
 
     def move_backward(self, speed: int = 100) -> bool:
-        logger.debug(f"Mock backward: {speed}")
         return True
 
     def move_left(self, speed: int = 100) -> bool:
-        logger.debug(f"Mock left: {speed}")
         return True
 
     def move_right(self, speed: int = 100) -> bool:
-        logger.debug(f"Mock right: {speed}")
         return True
 
     def move(self, direction: str, distance: int = 30) -> bool:
-        logger.debug(f"Mock move: {direction} {distance}")
         return True
 
     def stop(self) -> bool:
-        logger.debug("Mock stop")
         return True
 
     def look(self, direction: str) -> bool:
-        logger.debug(f"Mock look: {direction}")
         return True
 
     def set_servo_angle(self, servo: str, angle: int) -> bool:
-        logger.debug(f"Mock servo: {servo} {angle}")
         return True
 
-    def disconnect(self) -> None:
-        pass
+    def get_status(self) -> dict:
+        return {"connected": False, "port": self.port, "last_error": None}
 
 
-def get_rex_client() -> REXClient:
-    """Get REX client instance."""
-    return REXClient()
+_rex_client: Optional[REXClient] = None
+
+
+def get_rex_client(serial_port: str = None) -> REXClient:
+    """Get global REX client instance."""
+    global _rex_client
+    if _rex_client is None:
+        _rex_client = REXClient(port=serial_port)
+    return _rex_client

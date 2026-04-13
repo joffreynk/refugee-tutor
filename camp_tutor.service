@@ -1,0 +1,14 @@
+[Unit]
+Description=Camp Tutor Robot
+After=network.target
+
+[Service]
+Type=simple
+User=refugee
+WorkingDirectory=/home/refugee
+ExecStart=/home/refugee/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

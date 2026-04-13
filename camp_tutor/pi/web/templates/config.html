@@ -3,64 +3,6 @@
 
 {% block content %}
 <div class="card">
-    <h2>Bluetooth Configuration</h2>
-    <div class="status-bar">
-        <div class="status-item">
-            <div class="status-label">Status</div>
-            <div class="status-value {% if bluetooth.state == 'connected' %}ok{% elif bluetooth.state == 'error' %}error{% endif %}" id="bt-status">
-                {{ bluetooth.state|upper }}
-            </div>
-        </div>
-        <div class="status-item">
-            <div class="status-label">Connected Device</div>
-            <div class="status-value" id="bt-connected">
-                {{ bluetooth.connected.name if bluetooth.connected else 'None' }}
-            </div>
-        </div>
-    </div>
-    
-    <div class="btn-group" style="margin-bottom: 15px;">
-        <button class="btn btn-primary" onclick="scanBluetooth()">Scan Devices</button>
-        <button class="btn btn-danger" onclick="disconnectBluetooth()" {% if not bluetooth.connected %}disabled{% endif %}>Disconnect</button>
-    </div>
-    
-    <div id="bluetooth-devices">
-        {% if bluetooth.devices %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Device Name</th>
-                    <th>Address</th>
-                    <th>Signal</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for device in bluetooth.devices %}
-                <tr>
-                    <td>{{ device.name }}</td>
-                    <td><code>{{ device.address }}</code></td>
-                    <td>{{ device.rssi }} dBm</td>
-                    <td>
-                        {% if device.connected %}
-                        <span class="device-status connected">Connected</span>
-                        {% else %}
-                        <button class="btn btn-success" style="padding: 5px 10px; font-size: 0.8rem;" onclick="connectBluetooth('{{ device.address }}')">Connect</button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="empty-state">
-            <p>No devices found. Click "Scan Devices" to search for Bluetooth devices.</p>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-<div class="card">
     <h2>Audio Settings</h2>
     <div class="control-group">
         <label>Volume</label>
@@ -87,94 +29,24 @@
 {% endblock %}
 
 {% block scripts %}
-function updateBluetoothStatus() {
-    fetch('/api/bluetooth/status')
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('bt-status').textContent = data.state.toUpperCase();
-            document.getElementById('bt-connected').textContent = data.connected ? data.connected.name : 'None';
-            
-            if (data.devices.length > 0) {
-                let html = '<table><thead><tr><th>Device Name</th><th>Address</th><th>Signal</th><th>Action</th></tr></thead><tbody>';
-                data.devices.forEach(d => {
-                    html += '<tr>';
-                    html += '<td>' + d.name + '</td>';
-                    html += '<td><code>' + d.address + '</code></td>';
-                    html += '<td>' + d.rssi + ' dBm</td>';
-                    if (d.connected) {
-                        html += '<td><span class="device-status connected">Connected</span></td>';
-                    } else {
-                        html += '<td><button class="btn btn-success" style="padding: 5px 10px; font-size: 0.8rem;" onclick="connectBluetooth(\'' + d.address + '\')">Connect</button></td>';
-                    }
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-                document.getElementById('bluetooth-devices').innerHTML = html;
-            }
-        });
-}
-
-function scanBluetooth() {
-    document.getElementById('bt-status').textContent = 'SCANNING...';
-    fetch('/api/bluetooth/scan', {method: 'POST'})
-        .then(r => r.json())
-        .then(data => {
-            if (data.devices.length > 0) {
-                let html = '<table><thead><tr><th>Device Name</th><th>Address</th><th>Signal</th><th>Action</th></tr></thead><tbody>';
-                data.devices.forEach(d => {
-                    html += '<tr>';
-                    html += '<td>' + d.name + '</td>';
-                    html += '<td><code>' + d.address + '</code></td>';
-                    html += '<td>' + d.rssi + ' dBm</td>';
-                    html += '<td><button class="btn btn-success" style="padding: 5px 10px; font-size: 0.8rem;" onclick="connectBluetooth(\'' + d.address + '\')">Connect</button></td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-                document.getElementById('bluetooth-devices').innerHTML = html;
-            } else {
-                document.getElementById('bluetooth-devices').innerHTML = '<div class="empty-state"><p>No devices found.</p></div>';
-            }
-            document.getElementById('bt-status').textContent = 'DISCONNECTED';
-        })
-        .catch(err => {
-            document.getElementById('bt-status').textContent = 'ERROR';
-        });
-}
-
-function connectBluetooth(address) {
-    document.getElementById('bt-status').textContent = 'CONNECTING...';
-    fetch('/api/bluetooth/connect', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({address: address})
-    }).then(r => r.json()).then(data => {
-        if (data.success) {
-            updateBluetoothStatus();
-        } else {
-            document.getElementById('bt-status').textContent = 'ERROR';
-        }
-    });
-}
-
-function disconnectBluetooth() {
-    fetch('/api/bluetooth/disconnect', {method: 'POST'})
-        .then(r => r.json())
-        .then(data => {
-            updateBluetoothStatus();
-        });
-}
-
+<script>
 function setVolume() {
-    let vol = document.getElementById('volume-slider').value;
+    const vol = document.getElementById('volume-slider').value;
     fetch('/api/volume', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({volume: parseInt(vol)})
+    }).then(r => r.json()).then(d => {
+        document.getElementById('volume-value').textContent = vol;
     });
 }
 
 function toggleMute() {
-    fetch('/api/mute', {method: 'POST'}).then(() => window.location.reload());
+    fetch('/api/volume/mute', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('mute-btn').textContent = d.muted ? 'Unmute' : 'Mute';
+        });
 }
 
 function selectAgeGroup(key) {
@@ -182,10 +54,9 @@ function selectAgeGroup(key) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({age_group: key})
-    }).then(() => window.location.reload());
+    }).then(r => r.json()).then(d => {
+        location.reload();
+    });
 }
-
-document.getElementById('volume-slider').addEventListener('input', function() {
-    document.getElementById('volume-value').textContent = this.value;
-});
+</script>
 {% endblock %}

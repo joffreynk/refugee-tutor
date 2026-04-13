@@ -51,15 +51,8 @@ class SystemMonitor:
         "ULTRASONIC_TRIG": {"pin": 17, "function": "HC-SR04 Trigger"},
         "ULTRASONIC_ECHO": {"pin": 16, "function": "HC-SR04 Echo"},
         
-        # 4 Omni Motors (A, B, C, D)
-        "MOTOR_A_FWD": {"pin": 15, "function": "Motor A Forward"},
-        "MOTOR_A_BACK": {"pin": 23, "function": "Motor A Backward"},
-        "MOTOR_B_FWD": {"pin": 32, "function": "Motor B Forward"},
-        "MOTOR_B_BACK": {"pin": 33, "function": "Motor B Backward"},
-        "MOTOR_C_FWD": {"pin": 5, "function": "Motor C Forward"},
-        "MOTOR_C_BACK": {"pin": 4, "function": "Motor C Backward"},
-        "MOTOR_D_FWD": {"pin": 27, "function": "Motor D Forward"},
-        "MOTOR_D_BACK": {"pin": 14, "function": "Motor D Backward"},
+        # 4 Omni Motors (controlled by REX via I2C)
+        "REX_MOTORS": {"pin": "I2C 0x42", "function": "All motors via REX Arduino"},
         
         # Buzzer
         "BUZZER": {"pin": 25, "function": "Audio feedback"},
@@ -109,22 +102,23 @@ class SystemMonitor:
                 self._rex_client = rex_client.get_rex_client()
             
             if self._rex_client.is_connected():
-                status = self._rex_client.get_status()
-                if "READY" in status or "IDLE" in status:
+                if self._rex_client.ping():
+                    status = self._rex_client.get_status()
                     self.devices["REX"] = DeviceInfo(
                         name="REX Controller",
                         status=SystemStatus.CONNECTED,
                         pin="I2C 0x42",
-                        details=status,
+                        details=status.get("status", "OK"),
                     )
                     self._rex_status = SystemStatus.CONNECTED
                 else:
                     self.devices["REX"] = DeviceInfo(
                         name="REX Controller",
-                        status=SystemStatus.ERROR,
+                        status=SystemStatus.DISCONNECTED,
                         pin="I2C 0x42",
-                        details=status,
+                        details="Not responding to ping",
                     )
+                    self._rex_status = SystemStatus.DISCONNECTED
             else:
                 self.devices["REX"] = DeviceInfo(
                     name="REX Controller",
@@ -397,6 +391,7 @@ class VolumeControl:
         self._rate = initial_rate
         self._muted = False
         self._on_change_callback: Optional[Callable[[float], None]] = None
+        self._sync_with_system_volume()
 
     @property
     def volume(self) -> float:
@@ -423,6 +418,38 @@ class VolumeControl:
     def set_volume_percent(self, percent: int) -> None:
         """Set volume by percentage (0-100)."""
         self.volume = percent / 100.0
+        self._apply_system_volume(percent)
+
+    def _apply_system_volume(self, percent: int) -> None:
+        """Apply volume to system mixer."""
+        import subprocess
+        try:
+            subprocess.run(
+                ["amixer", "-q", "-M", "sset", "Master", f"{percent}%"],
+                capture_output=True, timeout=2
+            )
+            logger.info(f"System volume set to {percent}%")
+        except Exception as e:
+            logger.warning(f"Could not set system volume: {e}")
+
+    def _sync_with_system_volume(self) -> None:
+        """Sync with system volume on startup."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["amixer", "get", "Master"],
+                capture_output=True, text=True, timeout=2
+            )
+            for line in result.stdout.split("\n"):
+                if "[" in line and "%]" in line:
+                    start = line.find("[") + 1
+                    end = line.find("%]")
+                    vol = int(line[start:end])
+                    self._volume = vol / 100.0
+                    logger.info(f"Synced with system volume: {vol}%")
+                    break
+        except Exception as e:
+            logger.warning(f"Could not sync system volume: {e}")
 
     @property
     def rate(self) -> int:

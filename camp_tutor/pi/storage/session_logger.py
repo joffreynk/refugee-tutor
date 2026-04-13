@@ -58,6 +58,36 @@ class SessionLogger:
             "data": data,
         })
 
+    def log_conversation(self, speaker: str, text: str) -> None:
+        """Log conversation (text only - no audio)."""
+        if not self.current_session:
+            return
+        
+        self.current_session["events"].append({
+            "type": "conversation",
+            "timestamp": datetime.now().isoformat(),
+            "speaker": speaker,  # "robot" or "student"
+            "text": text,
+            "transcribed": True,
+        })
+        
+        logger.info(f"Logged: {speaker} said '{text[:50]}...'")
+
+    def get_conversation_history(self) -> list:
+        """Get full conversation history."""
+        if not self.current_session:
+            return []
+        
+        conversations = []
+        for event in self.current_session.get("events", []):
+            if event.get("type") == "conversation":
+                conversations.append({
+                    "speaker": event.get("speaker"),
+                    "text": event.get("text"),
+                    "timestamp": event.get("timestamp"),
+                })
+        return conversations
+
     def end_session(self, completed: bool = True) -> Optional[dict]:
         """End current session."""
         if not self.current_session:

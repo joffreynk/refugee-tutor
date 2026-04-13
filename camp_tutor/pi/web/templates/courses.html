@@ -1,79 +1,241 @@
-{% extends "base.html" %}
-{% block title %}Courses - Camp Tutor{% endblock %}
-
-{% block content %}
-<div class="card">
-    <h2>Age Group</h2>
-    <div class="btn-group">
-        {% for ag in age_groups %}
-        <button class="btn {% if ag.key == current_age_group %}btn-primary{% else %}btn-secondary{% endif %}" 
-                onclick="selectAgeGroup('{{ ag.key }}')">
-            {{ ag.display }}
-        </button>
-        {% endfor %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Classes - Camp Tutor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; 
+              min-height: 100vh; padding-bottom: 70px; }
+        
+        .header { background: #0f0f23; padding: 12px 15px; border-bottom: 2px solid #00d9ff;
+                 position: sticky; top: 0; z-index: 100; }
+        .header h1 { color: #00d9ff; font-size: 1.2rem; }
+        
+        .container { padding: 15px; max-width: 800px; margin: 0 auto; }
+        
+        h1 { color: #00d9ff; text-align: center; margin-bottom: 15px; }
+        h2 { color: #ff6b6b; margin: 15px 0 10px; font-size: 1rem; }
+        
+        .card { background: #0f0f23; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+        
+        .nav { display: flex; gap: 5px; overflow-x: auto; padding: 8px 10px; background: #0a0a1a;
+              position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; justify-content: space-around; }
+        .nav a { color: #aaa; text-decoration: none; padding: 10px 8px; border-radius: 5px;
+                 font-size: 0.75rem; white-space: nowrap; text-align: center; flex: 1; }
+        .nav a:hover, .nav a.active { background: #00d9ff; color: #1a1a2e; }
+        
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 12px;
+                   background: #1a1a2e; border: 1px solid #333; color: #eee;
+                   border-radius: 8px; font-size: 16px; }
+        
+        button { padding: 14px 20px; background: #00d9ff; color: #1a1a2e;
+                 border: none; border-radius: 8px; cursor: pointer;
+                 font-size: 1rem; font-weight: bold; touch-action: manipulation; }
+        button:hover { opacity: 0.8; }
+        button:active { transform: scale(0.96); }
+        .btn-full { width: 100%; margin-bottom: 10px; }
+        .btn-success { background: #00ff00; }
+        .btn-danger { background: #ff4757; color: white; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #333; font-size: 0.9rem; }
+        th { color: #00d9ff; font-size: 0.8rem; }
+        
+        .status { padding: 10px; background: #1a1a2e; border-radius: 8px; margin-top: 10px; }
+        .status.success { border-left: 3px solid #00ff00; }
+        
+        @media (min-width: 768px) {
+            body { padding-bottom: 0; }
+            .nav { position: static; overflow-x: visible; gap: 10px; justify-content: flex-start; }
+            .nav a { flex: none; padding: 10px 15px; font-size: 0.9rem; }
+            .container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 Classes & Timetable</h1>
     </div>
-</div>
-
-<div class="card">
-    <h2>Subjects</h2>
-    {% set age_curriculum = curriculum.get(current_age_group, {}) %}
-    <div class="grid">
-        {% for subject, topics in age_curriculum.items() %}
-        <div class="stat-box">
-            <div class="num" style="font-size: 1.2rem; text-transform: capitalize;">{{ subject }}</div>
-            <div class="label">{{ topics.keys()|list|length }} topics</div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Create Class Group</h2>
+            <form id="groupForm">
+                <div class="form-group">
+                    <label>Class Name</label>
+                    <input type="text" name="name" placeholder="e.g., Grade 5A" required>
+                </div>
+                <div class="form-group">
+                    <label>Age Group</label>
+                    <select name="age_group">
+                        <option value="primary">Primary (5-11)</option>
+                        <option value="lower_secondary">Lower Secondary (11-14)</option>
+                        <option value="upper_secondary">Upper Secondary (14-18)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-full btn-success">Create Class</button>
+            </form>
+            <div id="groupStatus"></div>
         </div>
-        {% endfor %}
-    </div>
-</div>
 
-<div class="card">
-    <h2>Timetable</h2>
-    {% if timetable %}
-    <table>
-        <thead>
-            <tr>
-                <th>Day</th>
-                <th>Time</th>
-                <th>Subject</th>
-                <th>Topic</th>
-                <th>Duration</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for entry in timetable %}
-            <tr>
-                <td>{{ entry.day }}</td>
-                <td>{{ entry.time }}</td>
-                <td style="text-transform: capitalize;">{{ entry.subject }}</td>
-                <td>{{ entry.topic }}</td>
-                <td>{{ entry.duration }} min</td>
-                <td>
-                    {% if entry.completed %}
-                    <span class="device-status connected">Completed</span>
-                    {% else %}
-                    <span class="device-status">Pending</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div class="empty-state">
-        <p>No timetable entries.</p>
-    </div>
-    {% endif %}
-</div>
-{% endblock %}
+        <div class="card">
+            <h2>Class Groups</h2>
+            {% if groups %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Age Group</th>
+                        <th>Students</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in groups %}
+                    <tr>
+                        <td>{{ group.name }}</td>
+                        <td>{{ group.age_group }}</td>
+                        <td>{{ group.student_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: #666;">No class groups yet</p>
+            {% endif %}
+        </div>
 
-{% block scripts %}
-function selectAgeGroup(key) {
-    fetch('/api/age_group', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({age_group: key})
-    }).then(() => window.location.reload());
-}
-{% endblock %}
+        <div class="card">
+            <h2>Create Timetable Entry</h2>
+            <form id="timetableForm">
+                <div class="form-group">
+                    <label>Day</label>
+                    <select name="day">
+                        <option value="monday">Monday</option>
+                        <option value="tuesday">Tuesday</option>
+                        <option value="wednesday">Wednesday</option>
+                        <option value="thursday">Thursday</option>
+                        <option value="friday">Friday</option>
+                        <option value="saturday">Saturday</option>
+                        <option value="sunday">Sunday</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Time</label>
+                    <input type="time" name="time" required>
+                </div>
+                <div class="form-group">
+                    <label>Subject</label>
+                    <select name="subject">
+                        <option value="mathematics">Mathematics</option>
+                        <option value="science">Science</option>
+                        <option value="english">English</option>
+                        <option value="computing">Computing</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Class</label>
+                    <select name="group_id" id="groupSelect">
+                        <option value="">All Classes</option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn-full">Add to Timetable</button>
+            </form>
+            <div id="timetableStatus"></div>
+        </div>
+
+        <div class="card">
+            <h2>Today's Schedule</h2>
+            {% if schedule %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Subject</th>
+                        <th>Topic</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in schedule %}
+                    <tr>
+                        <td>{{ entry.time }}</td>
+                        <td>{{ entry.subject }}</td>
+                        <td>{{ entry.topic }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: #666;">No classes scheduled for today</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <nav class="nav">
+        <a href="/">🏠 Home</a>
+        <a href="/commands">⚡ Commands</a>
+        <a href="/students">👨‍🎓 Students</a>
+        <a href="/wifi">📶 WiFi</a>
+        <a href="/progress">📈 Progress</a>
+    </nav>
+
+    <script>
+        document.getElementById('groupForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            try {
+                const response = await fetch('/api/group/create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: form.name.value,
+                        age_group: form.age_group.value
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('groupStatus').innerHTML = data.success 
+                    ? '<div class="status success">Class created!</div>'
+                    : '<div class="status error">' + data.error + '</div>';
+                if (data.success) location.reload();
+            } catch(err) {
+                document.getElementById('groupStatus').innerHTML = '<div class="status error">' + err + '</div>';
+            }
+        };
+
+        document.getElementById('timetableForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const group_id = document.getElementById('groupSelect').value;
+            
+            const payload = {
+                day: form.day.value,
+                time: form.time.value,
+                subject: form.subject.value,
+                group_id: group_id
+            };
+            
+            const api = group_id ? '/api/timetable/assign' : '/api/timetable/create';
+            try {
+                const response = await fetch(api, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                document.getElementById('timetableStatus').innerHTML = data.success
+                    ? '<div class="status success">Timetable entry added!</div>'
+                    : '<div class="status error">' + data.error + '</div>';
+                if (data.success) location.reload();
+            } catch(err) {
+                document.getElementById('timetableStatus').innerHTML = '<div class="status error">' + err + '</div>';
+            }
+        };
+    </script>
+</body>
+</html>

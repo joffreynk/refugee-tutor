@@ -8,25 +8,25 @@
         <div class="status-value ok">{{ status_ok }}</div>
     </div>
     <div class="status-item">
-        <div class="status-label">Devices Error</div>
+        <div class="status-label">Error</div>
         <div class="status-value error">{{ status_error }}</div>
     </div>
     <div class="status-item">
-        <div class="status-label">Devices Offline</div>
+        <div class="status-label">Offline</div>
         <div class="status-value">{{ status_offline }}</div>
     </div>
     <div class="status-item">
         <div class="status-label">Volume</div>
-        <div class="status-value">{{ volume }}%</div>
+        <div class="status-value" id="volume-display">{{ volume }}%</div>
     </div>
 </div>
 
 <div class="grid">
     <div class="card">
-        <h2>Session Control</h2>
+        <h2>📚 Session</h2>
         <div class="btn-group">
-            <button class="btn btn-success" onclick="startSession()">Start Class</button>
-            <button class="btn btn-danger" onclick="endSession()">End Class</button>
+            <button class="btn btn-success" onclick="startSession()">▶ Start</button>
+            <button class="btn btn-danger" onclick="endSession()">■ Stop</button>
         </div>
         <div class="control-group" style="margin-top: 15px;">
             <label>Robot State</label>
@@ -38,52 +38,53 @@
     </div>
     
     <div class="card">
-        <h2>Audio Controls</h2>
+        <h2>🔊 Audio</h2>
         <div class="control-group">
-            <label>Volume</label>
+            <label>Volume: <span id="volume-value">{{ volume }}</span>%</label>
             <input type="range" id="volume-slider" min="0" max="100" value="{{ volume }}">
-            <div class="value-display"><span id="volume-value">{{ volume }}</span>%</div>
         </div>
         <div class="btn-group">
-            <button class="btn btn-primary" onclick="setVolume()">Set Volume</button>
-            <button class="btn btn-secondary" onclick="toggleMute()" id="mute-btn">{{ 'Unmute' if muted else 'Mute' }}</button>
+            <button class="btn btn-primary" onclick="setVolume()">Set</button>
+            <button class="btn btn-secondary" onclick="toggleMute()" id="mute-btn">Mute</button>
         </div>
     </div>
 </div>
 
 <div class="card">
-    <h2>Device Status</h2>
+    <h2>🔌 Device Status</h2>
     {% if devices %}
-    <table>
-        <thead>
-            <tr>
-                <th>Device</th>
-                <th>Status</th>
-                <th>Details</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for device in devices %}
-            <tr>
-                <td>{{ device.name }}</td>
-                <td>
-                    {% if device.status == 'connected' %}
-                    <span class="device-status connected">Connected</span>
-                    {% elif device.status == 'error' %}
-                    <span class="device-status" style="background: #ffa502; color: #1a1a2e;">Error</span>
-                    {% else %}
-                    <span class="device-status disconnected">Offline</span>
-                    {% endif %}
-                </td>
-                <td>{{ device.details or '-' }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Device</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for device in devices %}
+                <tr>
+                    <td>{{ device.name }}</td>
+                    <td>
+                        {% if device.status == 'connected' %}
+                        <span class="device-status connected">Connected</span>
+                        {% elif device.status == 'error' %}
+                        <span class="device-status" style="background: #ffa502; color: #1a1a2e;">Error</span>
+                        {% else %}
+                        <span class="device-status disconnected">Offline</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ device.details or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}
     <div class="empty-state">
-        <p>No device information available.</p>
-        <button class="btn btn-primary" onclick="refreshDevices()">Check Devices</button>
+        <p>No device info</p>
+        <button class="btn btn-primary" onclick="refreshDevices()">Check</button>
     </div>
     {% endif %}
 </div>
@@ -95,6 +96,9 @@ function updateStatus() {
         .then(r => r.json())
         .then(data => {
             document.getElementById('volume-display').textContent = data.volume + '%';
+            document.getElementById('volume-slider').value = data.volume;
+            document.getElementById('volume-value').textContent = data.volume;
+            document.getElementById('mute-btn').textContent = data.muted ? 'Unmute' : 'Mute';
         });
 }
 
@@ -118,15 +122,23 @@ function setVolume() {
 }
 
 function toggleMute() {
-    fetch('/api/mute', {method: 'POST'}).then(() => window.location.reload());
+    fetch('/api/mute', {method: 'POST'}).then(() => updateStatus());
 }
 
 function startSession() {
-    fetch('/api/session', {
+    // Actually start teaching - call /api/teach endpoint
+    fetch('/api/teach', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'start'})
-    }).then(() => window.location.reload());
+        body: JSON.stringify({language: 'en'})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            console.log('Teaching started:', data.message);
+        } else {
+            console.error('Teaching failed:', data.error);
+        }
+        updateStatus();
+    });
 }
 
 function endSession() {
@@ -134,7 +146,7 @@ function endSession() {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({action: 'end'})
-    }).then(() => window.location.reload());
+    }).then(() => updateStatus());
 }
 
 function setState(state) {
@@ -142,10 +154,19 @@ function setState(state) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({state: state})
-    }).then(() => window.location.reload());
+    }).then(() => updateStatus());
 }
 
 document.getElementById('volume-slider').addEventListener('input', function() {
     document.getElementById('volume-value').textContent = this.value;
 });
+
+// Auto-refresh every 10 seconds
+setInterval(() => {
+    updateStatus();
+    refreshDevices();
+}, 10000);
+
+// Initial load
+updateStatus();
 {% endblock %}

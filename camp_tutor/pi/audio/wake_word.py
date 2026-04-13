@@ -1,4 +1,4 @@
-"""Wake word detection module using Porcupine."""
+"""Wake word detection module."""
 
 import logging
 import os
@@ -19,14 +19,10 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# Get free API key from environment or use placeholder
-# Get your free key at: https://picovoice.ai/porcupine/
 PORCUPINE_ACCESS_KEY = os.environ.get("PV_ACCESS_KEY", "")
 
 
 class WakeWordDetector:
-    """Continuously listens for wake word using Porcupine engine."""
-
     def __init__(
         self,
         wake_word: str = settings.WAKE_WORD,
@@ -35,21 +31,18 @@ class WakeWordDetector:
         self.wake_word = wake_word.lower()
         self.sensitivity = sensitivity
         self.is_listening = False
-        self.recorder: Optional[PvRecorder] = None
+        self.recorder = None
         self.porcupine = None
-        self.callback: Optional[Callable[[], None]] = None
+        self.callback = None
         self._stop_event = threading.Event()
-        self._listen_thread: Optional[threading.Thread] = None
+        self._listen_thread = None
 
     def start(self, callback: Callable[[], None]) -> None:
-        """Start listening for wake word."""
         if self.is_listening:
-            logger.warning("Wake word detector already running")
             return
 
-        # Use simple detector if Porcupine not available or no access key
         if not HAS_PORCUPINE or not PORCUPINE_ACCESS_KEY:
-            logger.warning("Porcupine not available or no access key, using simple detector")
+            logger.warning("Using simple detector (no Porcupine key)")
             self._start_simple(callback)
             return
 
@@ -58,86 +51,86 @@ class WakeWordDetector:
 
         try:
             keywords = [self.wake_word.replace(" ", "_")]
-
             self.porcupine = pvporcupine.create(
                 access_key=PORCUPINE_ACCESS_KEY,
                 keywords=keywords,
                 sensitivities=[self.sensitivity],
             )
-
             self.recorder = PvRecorder(
                 frame_length=self.porcupine.frame_length,
                 buffer_size_ms=500,
             )
-
             self.is_listening = True
             self.recorder.start()
-
             self._listen_thread = threading.Thread(target=self._listen_loop)
             self._listen_thread.daemon = True
             self._listen_thread.start()
-
-            logger.info(f"Wake word detector started, listening for: {self.wake_word}")
-
+            logger.info(f"Wake word detector started: {self.wake_word}")
         except Exception as e:
-            logger.warning(f"Porcupine init failed: {e}, using simple detector")
+            logger.warning(f"Porcupine failed: {e}, using simple detector")
             self._start_simple(callback)
 
-    def _start_simple(self, callback: Callable[[], None]) -> None:
-        """Start simple detector as fallback."""
+    def _start_simple(self, callback):
         self.callback = callback
         self.is_listening = True
-        logger.info(f"Simple wake word detector started for: {self.wake_word}")
+        logger.info(f"Simple detector for: {self.wake_word}")
         
-    def _listen_loop(self) -> None:
-        """Main listening loop."""
+    def _listen_loop(self):
         while not self._stop_event.is_set() and self.is_listening:
             try:
                 if not self.recorder or not self.porcupine:
                     break
-                    
                 pcm = self.recorder.read()
                 if pcm is None:
                     continue
-
                 pcm_array = np.frombuffer(pcm, dtype=np.int16)
                 pcm_float = pcm_array.astype(np.float32) / 32767.0
-
                 result = self.porcupine.process(pcm_float)
-
                 if result >= 0:
-                    logger.info(f"Wake word detected: {self.wake_word}")
+                    logger.info("Wake word detected!")
                     if self.callback:
                         self.callback()
-
             except Exception as e:
-                logger.error(f"Error in wake word detection: {e}")
+                logger.error(f"Error: {e}")
                 time.sleep(0.1)
 
-    def stop(self) -> None:
-        """Stop listening for wake word."""
-        if not self.is_listening:
-            return
-
+    def stop(self):
         self._stop_event.set()
         self.is_listening = False
-
         if self.recorder:
             try:
                 self.recorder.stop()
-            except Exception:
+            except:
                 pass
             self.recorder = None
-
         if self.porcupine:
             try:
                 self.porcupine.delete()
-            except Exception:
+            except:
                 pass
             self.porcupine = None
-
         logger.info("Wake word detector stopped")
 
-    def is_active(self) -> bool:
-        """Check if detector is active."""
+    def is_active(self):
         return self.is_listening
+
+
+class SimpleWakeWordDetector:
+    def __init__(self, wake_word: str = settings.WAKE_WORD):
+        self.wake_word = wake_word.lower()
+        self.is_listening = False
+        self.callback = None
+
+    def start(self, callback: Callable[[], None]) -> None:
+        self.callback = callback
+        self.is_listening = True
+        logger.info(f"Simple detector for: {self.wake_word}")
+
+    def stop(self) -> None:
+        self.is_listening = False
+
+    def is_active(self) -> bool:
+        return self.is_listening
+
+    def check_audio(self, audio_data: bytes) -> bool:
+        return False

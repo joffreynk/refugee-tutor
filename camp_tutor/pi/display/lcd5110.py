@@ -62,6 +62,10 @@ class LCD5110:
             self._cs = digitalio.DigitalInOut(board.D8)
             self._cs.direction = digitalio.Direction.OUTPUT
 
+            self._led = digitalio.DigitalInOut(board.D18)
+            self._led.direction = digitalio.Direction.OUTPUT
+            self._led.value = True
+
             self.disp = PCD8544(
                 self._spi,
                 self._dc,

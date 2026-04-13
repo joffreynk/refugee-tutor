@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -72,6 +72,9 @@ class ProgressTracker:
             "correct": correct,
             "timestamp": datetime.now().isoformat(),
         })
+        
+        if len(topic_data["history"]) > settings.MAX_HISTORY:
+            topic_data["history"] = topic_data["history"][-settings.MAX_HISTORY:]
 
         student_data["total_answers"] += 1
 
@@ -170,7 +173,7 @@ class ProgressTracker:
         if last_active == today:
             return
 
-        yesterday = (datetime.now().date() - datetime.timedelta(days=1)).isoformat()
+        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
 
         if last_active == yesterday:
             student_data["streak"] = student_data.get("streak", 0) + 1

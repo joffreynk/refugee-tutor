@@ -1,176 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>WiFi Settings - Camp Tutor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WiFi - Camp Tutor</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; min-height: 100vh; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        h1 { color: #00d9ff; text-align: center; margin-bottom: 20px; }
-        h2 { color: #00d9ff; margin-top: 20px; }
-        .card { background: #0f0f23; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-        .card h2 { color: #ff6b6b; margin-bottom: 15px; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 10px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #aaa; }
-        .form-group input, .form-group select { width: 100%; padding: 12px;
-                 background: #1a1a2e; border: 1px solid #333; color: #eee;
-                 border-radius: 6px; font-size: 16px; }
-        button, .btn { padding: 12px 24px; background: #00d9ff; color: #1a1a2e;
-                    border: none; border-radius: 6px; cursor: pointer;
-                    font-size: 16px; font-weight: bold; }
-        button:hover { opacity: 0.8; }
-        .btn-danger { background: #ff4757; color: white; }
-        .btn-small { padding: 8px 16px; font-size: 14px; }
-        .status { padding: 15px; background: #1a1a2e; border-radius: 8px; margin-bottom: 20px; }
-        .status.connected { border-left: 4px solid #00ff00; }
-        .status.disconnected { border-left: 4px solid #ff4757; }
-        .status.offline { border-left: 4px solid #ffa502; }
-        .network-list { margin-top: 15px; }
-        .network-item { padding: 12px; background: #1a1a2e; border-radius: 8px;
-                       margin-bottom: 10px; display: flex; justify-content: space-between;
-                       align-items: center; }
-        .network-name { font-weight: bold; }
-        .mode-toggle { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
-        .toggle { width: 50px; height: 26px; background: #333; border-radius: 13px;
-                  position: relative; cursor: pointer; }
-        .toggle.active { background: #00d9ff; }
-        .toggle::after { content: ''; width: 22px; height: 22px; background: white;
-                        border-radius: 50%; position: absolute; top: 2px; left: 2px;
-                        transition: 0.3s; }
-        .toggle.active::after { left: 26px; }
-        .alert { padding: 12px; background: #1a1a2e; border-radius: 8px; margin-bottom: 15px; }
-        .alert.success { border-left: 4px solid #00ff00; }
-        .alert.error { border-left: 4px solid #ff4757; }
-        .spinner { display: inline-block; width: 20px; height: 20px;
-                   border: 3px solid #333; border-top: 3px solid #00d9ff;
-                   border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>WiFi Settings</h1>
-                 border-radius: 8px; transition: background 0.3s; }
-        .card { background: #0f0f23; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-        .card h2 { color: #ff6b6b; margin-bottom: 15px; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 10px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #aaa; }
-        .form-group input, .form-group select { width: 100%; padding: 12px;
-                 background: #1a1a2e; border: 1px solid #333; color: #eee;
-                 border-radius: 6px; font-size: 16px; }
-        button, .btn { padding: 12px 24px; background: #00d9ff; color: #1a1a2e;
-                    border: none; border-radius: 6px; cursor: pointer;
-                    font-size: 16px; font-weight: bold; }
-        button:hover { opacity: 0.8; }
-        .btn-danger { background: #ff4757; color: white; }
-        .btn-small { padding: 8px 16px; font-size: 14px; }
-        .status { padding: 15px; background: #1a1a2e; border-radius: 8px; margin-bottom: 20px; }
-        .status.connected { border-left: 4px solid #00ff00; }
-        .status.disconnected { border-left: 4px solid #ff4757; }
-        .status.offline { border-left: 4px solid #ffa502; }
-        .network-list { margin-top: 15px; }
-        .network-item { padding: 12px; background: #1a1a2e; border-radius: 8px;
-                       margin-bottom: 10px; display: flex; justify-content: space-between;
-                       align-items: center; }
-        .network-name { font-weight: bold; }
-        .network-signal { color: #00d9ff; }
-        .mode-toggle { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
-        .toggle { width: 50px; height: 26px; background: #333; border-radius: 13px;
-                  position: relative; cursor: pointer; }
-        .toggle.active { background: #00d9ff; }
-        .toggle::after { content: ''; width: 22px; height: 22px; background: white;
-                        border-radius: 50%; position: absolute; top: 2px; left: 2px;
-                        transition: 0.3s; }
-        .toggle.active::after { left: 26px; }
-        .alert { padding: 12px; background: #1a1a2e; border-radius: 8px; margin-bottom: 15px; }
-        .alert.success { border-left: 4px solid #00ff00; }
-        .alert.error { border-left: 4px solid #ff4757; }
-        .spinner { display: inline-block; width: 20px; height: 20px;
-                   border: 3px solid #333; border-top: 3px solid #00d9ff;
-                   border-radius: 50%; animation: spin 1s linear infinite; }
-        .nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
-        .nav a { flex: 1; min-width: 100px; padding: 10px; background: #0f0f23;
-                 color: #aaa; text-decoration: none; text-align: center;
-                 border-radius: 5px; }
-        .nav a:hover, .nav a.active { background: #00d9ff; color: #1a1a2e; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <nav class="nav" style="margin-bottom: 20px;">
-            <a href="/" style="background: transparent;">Dashboard</a>
-            <a href="/students" style="background: transparent;">Students</a>
-            <a href="/wifi" class="active" style="background: #00d9ff; color: #1a1a2e;">WiFi</a>
-            <a href="/bluetooth" style="background: transparent;">Bluetooth</a>
-            <a href="/devices" style="background: transparent;">Devices</a>
-            <a href="/config" style="background: transparent;">Settings</a>
-        </nav>
+              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; 
+              min-height: 100vh; padding-bottom: 70px; }
         
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        {% for message in messages %}
-        <div class="alert success">{{ message }}</div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
-
+        .header { background: #0f0f23; padding: 12px 15px; border-bottom: 2px solid #00d9ff;
+                 position: sticky; top: 0; z-index: 100; }
+        .header h1 { color: #00d9ff; font-size: 1.2rem; }
+        
+        .container { padding: 15px; max-width: 800px; margin: 0 auto; }
+        
+        h1 { color: #00d9ff; text-align: center; margin-bottom: 15px; }
+        h2 { color: #ff6b6b; margin: 15px 0 10px; font-size: 1rem; }
+        
+        .card { background: #0f0f23; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+        
+        .nav { display: flex; gap: 5px; overflow-x: auto; padding: 8px 10px; background: #0a0a1a;
+              position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; justify-content: space-around; }
+        .nav a { color: #aaa; text-decoration: none; padding: 10px 8px; border-radius: 5px;
+                 font-size: 0.75rem; white-space: nowrap; text-align: center; flex: 1; }
+        .nav a:hover, .nav a.active { background: #00d9ff; color: #1a1a2e; }
+        
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 12px;
+                   background: #1a1a2e; border: 1px solid #333; color: #eee;
+                   border-radius: 8px; font-size: 16px; }
+        
+        button { padding: 14px 20px; background: #00d9ff; color: #1a1a2e;
+                 border: none; border-radius: 8px; cursor: pointer;
+                 font-size: 1rem; font-weight: bold; touch-action: manipulation; }
+        button:hover { opacity: 0.8; }
+        button:active { transform: scale(0.96); }
+        .btn-full { width: 100%; margin-bottom: 10px; }
+        .btn-danger { background: #ff4757; color: white; }
+        
+        .status { padding: 12px; background: #1a1a2e; border-radius: 8px; margin-bottom: 15px; }
+        .status.connected { border-left: 4px solid #00ff00; }
+        .status.disconnected { border-left: 4px solid #ff4757; }
+        
+        .network-item { padding: 12px; background: #1a1a2e; border-radius: 8px;
+                       margin-bottom: 10px; display: flex; justify-content: space-between;
+                       align-items: center; flex-wrap: wrap; gap: 8px; }
+        .network-name { font-weight: bold; font-size: 0.95rem; }
+        .network-signal { color: #00d9ff; font-size: 0.85rem; }
+        
+        .spinner { display: inline-block; width: 20px; height: 20px;
+                  border: 3px solid #333; border-top: 3px solid #00d9ff;
+                  border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        @media (min-width: 768px) {
+            body { padding-bottom: 0; }
+            .nav { position: static; overflow-x: visible; gap: 10px; justify-content: flex-start; }
+            .nav a { flex: none; padding: 10px 15px; font-size: 0.9rem; }
+            .container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📶 WiFi Settings</h1>
+    </div>
+    
+    <div class="container">
         <div class="card">
-            <h2>Connection Status</h2>
+            <h2>Status</h2>
             {% if status.connected %}
             <div class="status connected">
                 <strong>Connected</strong> to {{ status.ssid }}
-                <br><small>Mode: Online</small>
-            </div>
-            {% elif status.offline_mode %}
-            <div class="status offline">
-                <strong>Offline Mode</strong>
-                <br><small>WiFi is disabled</small>
             </div>
             {% else %}
             <div class="status disconnected">
                 <strong>Not Connected</strong>
-                <br><small>WiFi is available but not connected</small>
             </div>
             {% endif %}
-            
-            <div class="mode-toggle">
-                <div class="toggle {% if status.offline_mode %}{% else %}active{% endif %}" 
-                     id="modeToggle" onclick="toggleMode()"></div>
-                <span>Online Mode (requires internet)</span>
-            </div>
         </div>
 
         <div class="card">
-            <h2>Connect to WiFi</h2>
+            <h2>Connect to Network</h2>
             <form method="POST" action="/wifi/connect">
                 <div class="form-group">
-                    <label>Network Name (SSID)</label>
-                    <input type="text" name="ssid" value="{{ saved_ssid }}" placeholder="Enter WiFi name" required>
+                    <label>Network (SSID)</label>
+                    <input type="text" name="ssid" required placeholder="WiFi name">
                 </div>
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" name="password" placeholder="Enter password" required>
+                    <input type="password" name="password" required placeholder="WiFi password">
                 </div>
-                <button type="submit">Connect</button>
+                <button type="submit" class="btn-full">Connect</button>
             </form>
         </div>
 
         <div class="card">
             <h2>Available Networks</h2>
-            <button class="btn btn-small" onclick="scanNetworks()" id="scanBtn">Scan Networks</button>
+            <button class="btn-full" onclick="scanNetworks()" id="scanBtn">Scan Networks</button>
             <div id="scanSpinner" class="spinner" style="display: none; margin-left: 10px;"></div>
             
             <div class="network-list" id="networkList">
                 {% for network in networks %}
                 <div class="network-item">
-                    <span class="network-name">{{ network }}</span>
-                    <button class="btn btn-small" onclick="connectToNetwork('{{ network }}')">Connect</button>
+                    <span class="network-name">{{ network.ssid }}</span>
+                    <span class="network-signal">{{ network.signal }}%</span>
                 </div>
-                {% else %}
-                <p style="color: #888; margin-top: 10px;">No networks found. Click "Scan Networks" to search.</p>
                 {% endfor %}
             </div>
         </div>
@@ -179,71 +116,48 @@
         <div class="card">
             <h2>Disconnect</h2>
             <form method="POST" action="/wifi/disconnect">
-                <button type="submit" class="btn btn-danger">Disconnect from WiFi</button>
+                <button type="submit" class="btn-full btn-danger">Disconnect WiFi</button>
             </form>
         </div>
         {% endif %}
     </div>
+    
+    <nav class="nav">
+        <a href="/">🏠 Home</a>
+        <a href="/commands">⚡ Commands</a>
+        <a href="/students">👨‍🎓 Students</a>
+        <a href="/courses">📚 Courses</a>
+        <a href="/progress">📈 Progress</a>
+    </nav>
 
     <script>
-        function toggleMode() {
-            fetch('/wifi/mode', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({offline: document.getElementById('modeToggle').classList.contains('active')})
-            }).then(() => location.reload());
-        }
-
-        function scanNetworks() {
-            document.getElementById('scanBtn').style.display = 'none';
-            document.getElementById('scanSpinner').style.display = 'inline-block';
+        async function scanNetworks() {
+            const btn = document.getElementById('scanBtn');
+            const spinner = document.getElementById('scanSpinner');
+            btn.style.display = 'none';
+            spinner.style.display = 'inline-block';
             
-            fetch('/api/wifi/scan')
-                .then(res => res.json())
-                .then(data => {
-                    const list = document.getElementById('networkList');
-                    if (data.networks && data.networks.length > 0) {
-                        list.innerHTML = data.networks.map(n => 
-                            '<div class="network-item">' +
-                            '<span class="network-name">' + n + '</span>' +
-                            '<button class="btn btn-small" onclick="connectToNetwork(\'' + n + '\')">Connect</button>' +
-                            '</div>'
-                        ).join('');
-                    } else {
-                        list.innerHTML = '<p style="color: #888;">No networks found</p>';
-                    }
-                })
-                .catch(err => {
-                    list.innerHTML = '<p style="color: #ff4757;">Error scanning networks</p>';
-                })
-                .finally(() => {
-                    document.getElementById('scanBtn').style.display = 'inline-block';
-                    document.getElementById('scanSpinner').style.display = 'none';
-                });
-        }
-
-        function connectToNetwork(ssid) {
-            const password = prompt('Enter password for ' + ssid);
-            if (password) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/wifi/connect';
+            try {
+                const response = await fetch('/wifi/scan');
+                const data = await response.json();
+                const list = document.getElementById('networkList');
                 
-                const ssidInput = document.createElement('input');
-                ssidInput.type = 'hidden';
-                ssidInput.name = 'ssid';
-                ssidInput.value = ssid;
-                
-                const passInput = document.createElement('input');
-                passInput.type = 'hidden';
-                passInput.name = 'password';
-                passInput.value = password;
-                
-                form.appendChild(ssidInput);
-                form.appendChild(passInput);
-                document.body.appendChild(form);
-                form.submit();
+                if (data.networks && data.networks.length > 0) {
+                    list.innerHTML = data.networks.map(n => 
+                        '<div class="network-item">' +
+                        '<span class="network-name">' + n.ssid + '</span>' +
+                        '<span class="network-signal">' + n.signal + '%</span>' +
+                        '</div>'
+                    ).join('');
+                } else {
+                    list.innerHTML = '<div class="network-item">No networks found</div>';
+                }
+            } catch(e) {
+                alert('Scan failed: ' + e);
             }
+            
+            btn.style.display = 'inline-block';
+            spinner.style.display = 'none';
         }
     </script>
 </body>

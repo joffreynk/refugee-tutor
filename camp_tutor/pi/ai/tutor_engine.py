@@ -1,7 +1,7 @@
 """Tutor engine - core teaching logic with Pearson Edexcel curriculum."""
 
 import logging
-import uuid
+import random
 from datetime import datetime
 from typing import Optional
 
@@ -83,6 +83,11 @@ class TutorEngine:
         self.session_active: bool = False
         self.curriculum_manager = CurriculumManager()
         self.student_age: int = 10
+        self._current_subtopic_index: int = 0
+        self._current_lesson_part: str = "hook"
+        self._current_section_index: int = 0
+        self._teach_counter: int = 0
+        self._pearson_curriculum = settings.PEARSON_CURRICULUM
 
     def start_session(
         self,
@@ -121,7 +126,6 @@ class TutorEngine:
             "Hi there! Ready to learn?",
             "Hello! Let's explore something new!",
         ]
-        import random
         return random.choice(greetings)
 
     def get_topic_list(self) -> list[str]:
@@ -138,6 +142,240 @@ class TutorEngine:
         """Speak text to student."""
         if self.tts:
             self.tts.speak(text)
+
+    def deliver_pearson_lesson(self, listen_for_answers: bool = True) -> Optional[dict]:
+        """Deliver interactive Pearson Edexcel lesson:
+        - 20 min: Teach 4 min, then listen 10 sec for questions, repeat
+        - 30 min: Student Q&A
+        - 15 min: Quiz
+        - 15 min: Feedback
+        Total: 80 minutes
+        """
+        subtopics = self._get_pearson_subtopics()
+        if not subtopics or self._current_subtopic_index >= len(subtopics):
+            return None
+        
+        subtopic = subtopics[self._current_subtopic_index]
+        sections = subtopic.get("sections", [])
+        
+        if not sections:
+            return None
+        
+        if self._current_lesson_part == "hook":
+            hook = subtopic.get("hook", "")
+            self._target_teach_time = 20 * 60
+            self._teach_time = 0
+            self.speak(f"Welcome to your {subtopic.get('name', 'lesson')}! This lesson lasts 80 minutes total. I'll teach for 4 minutes, then pause 10 seconds for questions. Then 30 minutes for your questions, 15 minutes quiz, and 15 minutes feedback. Let's begin! {hook}")
+            self._current_lesson_part = "teach"
+            self._teach_counter = 0
+            return {"part": "hook", "phase": "intro", "duration_min": 2}
+        
+        elif self._current_lesson_part == "teach":
+            self._target_teach_time = getattr(self, '_target_teach_time', 80 * 60)
+            
+            self.speak("TEACHING - 4 minutes. Listen carefully!")
+            
+            sections = self._get_curriculum_sections()
+            for section in sections:
+                if self._teach_time >= self._target_teach_time:
+                    break
+                title = section.get("title", "")
+                content = section.get("content", "")
+                self.speak(f"Let's learn about {title}. {content}")
+                self._teach_time += 120
+            
+            self._current_lesson_part = "listen_q"
+            return {"part": "teach", "phase": "teaching", "duration_min": 4, "action": "teaching", "total_teach_time": self._teach_time}
+        
+        elif self._current_lesson_part == "listen_q":
+            self.speak("I finished teaching for now. This is your time to ask questions! You have 60 seconds - speak up now if you have a question!")
+            
+            question = self._listen_for_student_question_timeout(60)
+            
+            if question and len(question) > 2:
+                self.speak("I hear you! Tell me your question, and say 'that's my question thanks' when finished.")
+                full_question = self._listen_until_thanks()
+                
+                if full_question and len(full_question) > 2:
+                    guidance = self._provide_guidance(full_question)
+                    self.speak(f"That's a great question! {guidance}")
+                else:
+                    self.speak("I didn't catch your question. That's okay, ask next time!")
+            else:
+                self.speak("No questions? Let's continue!")
+            
+            if self._teach_time >= self._target_teach_time:
+                self._current_lesson_part = "questions"
+                return {"part": "teach_done", "phase": "teaching_complete", "duration_min": 80}
+            else:
+                self._current_lesson_part = "teach"
+                return {"part": "listen_done", "phase": "listening", "action": "listened", "continue_teaching": True}
+        
+        elif self._current_lesson_part == "questions":
+            self.speak("PHASE 2: YOUR QUESTIONS - 30 minutes. Ask me anything!")
+            
+            for _ in range(6):
+                answer = self._listen_for_student_question()
+                if answer and len(answer) > 2:
+                    guidance = self._provide_guidance(answer)
+                    self.speak(f"Great question! {guidance}")
+            
+            self._current_lesson_part = "quiz"
+            return {"part": "questions", "phase": "qa", "duration_min": 30}
+        
+        elif self._current_lesson_part == "quiz":
+            self.speak("PHASE 3: QUIZ - 15 minutes!")
+            
+            all_quiz = []
+            for section in sections:
+                all_quiz.extend(section.get("quiz", []))
+            
+            if all_quiz:
+                responses = self._ask_and_listen_quiz(all_quiz)
+                self.speak(responses)
+            
+            self._current_lesson_part = "feedback"
+            return {"part": "quiz", "phase": "quiz", "duration_min": 15}
+        
+        elif self._current_lesson_part == "feedback":
+            self.speak("PHASE 4: FEEDBACK. Great work today! Keep learning!")
+            self._current_lesson_part = "complete"
+            return {"part": "feedback", "phase": "feedback", "duration_min": 15}
+        
+        elif self._current_lesson_part == "complete":
+            self.speak("Excellent! Lesson complete! See you next time!")
+            self._current_lesson_part = "hook"
+            self._current_subtopic_index += 1
+            return {"part": "complete", "duration_min": 2}
+        
+        return None
+    
+    def _listen_for_student_question_timeout(self, timeout_sec: int = 10) -> str:
+        """Listen for student question with timeout."""
+        from audio import speech_to_text
+        stt = speech_to_text.SpeechToText()
+        try:
+            return stt.listen(timeout=float(timeout_sec)) or ""
+        except Exception:
+            return ""
+    
+    def _listen_until_thanks(self) -> str:
+        """Keep listening until student says 'that's my question thanks'."""
+        from audio import speech_to_text
+        stt = speech_to_text.SpeechToText()
+        
+        full_question = ""
+        self.speak("I'm listening...")
+        
+        for _ in range(15):
+            try:
+                answer = stt.listen(timeout=5.0)
+                if answer:
+                    answer_lower = answer.lower()
+                    full_question += " " + answer
+                    if "thanks" in answer_lower or "done" in answer_lower or "that's it" in answer_lower:
+                        break
+            except Exception:
+                break
+        
+        return full_question.strip()
+    
+    def _listen_for_student_question(self) -> str:
+        """Listen for student questions during Q&A phase."""
+        if not self.tts:
+            return ""
+        
+        from audio import speech_to_text
+        stt = speech_to_text.SpeechToText()
+        
+        self.speak("What's your question?")
+        try:
+            answer = stt.listen(timeout=10.0)
+            return answer or ""
+        except Exception:
+            return ""
+    
+    def _provide_guidance(self, question: str) -> str:
+        """Provide interactive guidance based on student question."""
+        try:
+            from ai.llm_client import get_llm_client
+            llm = get_llm_client()
+            llm.set_topic(self.current_topic, self.current_subject)
+            llm.set_lesson(self._current_subtopic_index, self._current_section_index)
+            if llm.is_available():
+                answer = llm.answer_question(question)
+                if answer:
+                    return answer
+        except Exception as e:
+            logger.warning(f"LLM not available: {e}")
+        
+        keywords = question.lower()
+        
+        if any(k in keywords for k in ["cpu", "processor", "brain"]):
+            return "The CPU is the central processing unit - think of it as the brain of the computer. It fetches instructions, decodes them, and executes them billions of times per second!"
+        elif any(k in keywords for k in ["memory", "ram", "storage"]):
+            return "RAM is like your short-term memory - it's fast but temporary. Storage is like a bookshelf - slower but keeps things permanently."
+        elif any(k in keywords for k in ["binary", "0", "1", "number"]):
+            return "Computers use binary because electricity is either on or off. ON is 1, OFF is 0. That's it - just two digits, but combined they create everything!"
+        elif any(k in keywords for k in ["network", "internet", "wifi"]):
+            return "Networks connect computers together like a web. Your home router is the gateway to the internet - data packets travel through many computers to reach their destination."
+        else:
+            return "That's an interesting question! The best way to learn is to keep exploring and experimenting with code. Don't be afraid to make mistakes - that's how we learn!"
+    
+    def _ask_and_listen_quiz(self, questions: list) -> str:
+        """Ask quiz questions and listen for student answers."""
+        if not self.tts:
+            return ""
+        
+        from audio import speech_to_text
+        stt = speech_to_text.SpeechToText()
+        
+        responses = []
+        for i, question in enumerate(questions[:5], 1):
+            self.speak(f"Question {i}: {question}. Take a moment to think, then answer.")
+            
+            try:
+                answer = stt.listen(timeout=15.0)
+                if answer:
+                    responses.append(f"Question {i}: You answered: {answer}. ")
+                    if len(answer) > 3:
+                        responses.append("Excellent thinking! ")
+                    else:
+                        responses.append("Try to explain a bit more next time! ")
+                else:
+                    responses.append(f"Question {i}: No answer received. ")
+            except Exception:
+                responses.append(f"Question {i}: Let's move on. ")
+        
+        responses.append("Great effort on the quiz! Remember, every attempt helps you learn.")
+        return " ".join(responses)
+
+    def _get_pearson_subtopics(self) -> list:
+        """Get subtopics using new COMPREHENSIVE_CURRICULUM."""
+        try:
+            curriculum = settings.COMPREHENSIVE_CURRICULUM.get(self.current_age_group, {}).get(self.current_subject, {})
+            topics_list = curriculum.get("topics", [])
+            if topics_list and self._current_subtopic_index < len(topics_list):
+                topic = topics_list[self._current_subtopic_index]
+                return [{"name": topic.get("name", ""), "subtopics": topic.get("subtopics", [])}]
+            return []
+        except Exception as e:
+            logger.warning(f"Could not get subtopics: {e}")
+            return []
+    
+    def _get_curriculum_sections(self) -> list:
+        """Get sections from comprehensive curriculum."""
+        try:
+            curriculum = settings.COMPREHENSIVE_CURRICULUM.get(self.current_age_group, {}).get(self.current_subject, {})
+            topics_list = curriculum.get("topics", [])
+            if topics_list and self._current_subtopic_index < len(topics_list):
+                topic = topics_list[self._current_subtopic_index]
+                subtopics = topic.get("subtopics", [])
+                return [{"title": s.title(), "content": f"Learning about {s}. This is an important concept in {self.current_subject}."} for s in subtopics]
+            return []
+        except Exception as e:
+            logger.warning(f"Could not get sections: {e}")
+            return []
 
     def set_student_age(self, age: int) -> None:
         """Set student age and update age group."""
@@ -203,7 +441,6 @@ class TutorEngine:
             "Excellent work! Shall we move to another topic?",
             "Well done! Ready for something new?",
         ]
-        import random
 
         self.speak(random.choice(messages))
 

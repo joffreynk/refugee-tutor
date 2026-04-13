@@ -18,7 +18,6 @@ from ai import (
     homework_generator,
     assessment_engine,
     progress_tracker,
-    tflite_models,
 )
 from vision import camera, visual_monitor
 from vision.camera_capture import get_camera
@@ -174,7 +173,6 @@ class CampTutorRobot:
         logger.info(f"Device status: {self.device_status}")
         logger.info("Camp Tutor initialized")
         
-        from config import settings as config_settings
         web_ui.start_server_thread(host="0.0.0.0", port=config_settings.WEB_PORT)
         logger.info(f"Web server started at {config_settings.WEB_URL}")
 
@@ -207,6 +205,9 @@ class CampTutorRobot:
         if self.tts and self.tutor:
             greeting = self.tutor.get_greeting()
             self.tts.speak(greeting)
+            # Log robot greeting (text only - no audio)
+            if self.session:
+                self.session.log_conversation("robot", greeting)
 
         if self.lcd:
             self.lcd.show_status("LISTENING", topic="Language?")
@@ -214,31 +215,61 @@ class CampTutorRobot:
         self._detect_language()
 
     def _detect_language(self) -> None:
-        """Detect or confirm language."""
+        """Detect or confirm language with retry."""
         if not self.stt:
             return
 
-        if self.tts:
-            self.tts.speak("What language would you like to learn?")
-
-        text = self.stt.listen(timeout=8.0)
-
-        if text and self.lang_detector:
-            detected = self.lang_detector.detect(text)
-            self.current_language = detected
-
-            if self.tutor:
-                self.tutor.set_language(detected)
-            if self.homework_gen:
-                self.homework_gen.set_language(detected)
-            if self.assessment:
-                self.assessment.set_language(detected)
-
-            lang_name = config_settings.LANGUAGE_NAMES.get(detected, detected)
+        # Available languages to choose from
+        lang_options = ", ".join(config_settings.LANGUAGE_NAMES.values())
+        
+        max_attempts = 3
+        for attempt in range(max_attempts):
             if self.tts:
-                self.tts.speak(f"Okay, let's learn in {lang_name}")
-        else:
+                if attempt == 0:
+                    self.tts.speak("What language would you like to learn?")
+                else:
+                    self.tts.speak(f"Sorry, I didn't understand. Please say: English, French, Spanish, German, Italian, or Portuguese.")
+
+            text = self.stt.listen(timeout=10.0)
+
+            # Log student's response (text only - no audio)
+            if text and self.session:
+                self.session.log_conversation("student", text)
+
+            if text and self.lang_detector:
+                detected = self.lang_detector.detect(text)
+                
+                # Validate detected language
+                if detected in config_settings.LANGUAGE_CODES:
+                    self.current_language = detected
+                    
+                    if self.tutor:
+                        self.tutor.set_language(detected)
+                    if self.homework_gen:
+                        self.homework_gen.set_language(detected)
+                    if self.assessment:
+                        self.assessment.set_language(detected)
+
+                    lang_name = config_settings.LANGUAGE_NAMES.get(detected, detected)
+                    if self.tts:
+                        self.tts.speak(f"Okay, let's learn in {lang_name}")
+                        if self.session:
+                            self.session.log_conversation("robot", f"Okay, let's learn in {lang_name}")
+                    break
+            else:
+                # No speech detected - retry
+                if self.tts:
+                    self.tts.speak("I didn't hear anything. Please try again.")
+                    if self.session:
+                        self.session.log_conversation("robot", "I didn't hear anything. Please try again.")
+        
+        # If we couldn't detect after all attempts, default to English
+        if not self.current_language:
             self.current_language = "en"
+            if self.tts:
+                self.tts.speak("I'll use English. Let's start!")
+                if self.session:
+                    self.session.log_conversation("robot", "I'll use English. Let's start!")
             if self.tutor:
                 self.tutor.set_language("en")
 
@@ -389,7 +420,7 @@ class CampTutorRobot:
         words = answer_lower.split()
         expected_words = expected_lower.split()
         matches = sum(1 for w in expected_words if w in words)
-        return matches >= len(expected_words) * 0.5
+        return matches >= len(expected_words) * config_settings.MATCH_THRESHOLD
 
     def record_student_progress(self, subject: str, topic: str, correct: bool, score: float = 1.0) -> None:
         """Record student progress for a subject/topic."""
@@ -412,7 +443,47 @@ def main():
     """Main entry point."""
     robot = CampTutorRobot()
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
+    # Command line options:
+    #   python main.py           - Wait for wake word "Hello Tutor Robot"
+    #   python main.py --teach - Auto-start teaching immediately
+    #   python main.py --lang en - Auto-start with English
+    #   python main.py --interactive - Interactive mode
+    
+    if "--teach" in sys.argv or "--start" in sys.argv:
+        # Auto-start teaching mode
+        robot.initialize()
+        
+        # Get language from args or default to English
+        lang = "en"
+        for i, arg in enumerate(sys.argv):
+            if arg == "--lang" and i + 1 < len(sys.argv):
+                lang = sys.argv[i + 1]
+            if arg.startswith("--lang="):
+                lang = arg.split("=")[1]
+        
+        robot.current_language = lang
+        if robot.tutor:
+            robot.tutor.set_language(lang)
+        
+        # Start teaching directly
+        robot.state = "TEACHING"
+        robot.session_active = True
+        
+        if robot.lcd:
+            robot.lcd.show_status("TEACHING", language=lang)
+        
+        if robot.tts:
+            robot.tts.speak(f"Hello! Let's learn in {config_settings.LANGUAGE_NAMES.get(lang, lang)}!")
+        
+        # Start session
+        robot.start_session()
+        
+        # Keep running
+        while robot.session_active:
+            time.sleep(1)
+            robot._check_inactivity()
+    
+    elif len(sys.argv) > 1 and sys.argv[1] == "--interactive":
         robot.run_interactive()
     else:
         robot.initialize()

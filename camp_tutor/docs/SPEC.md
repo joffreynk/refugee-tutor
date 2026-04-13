@@ -1,5 +1,49 @@
 # Camp Tutor - Mobile AI Learning Robot
 
+**Version:** 2.2  
+**Date:** April 10, 2026
+
+---
+
+## Quick Start - How to Make the Robot Work
+
+```bash
+# On Raspberry Pi - Run these commands:
+
+# 1. Start Bluetooth
+sudo systemctl start bluetooth
+sudo systemctl enable bluetooth
+
+# 2. Start NetworkManager
+sudo systemctl start NetworkManager
+sudo systemctl enable NetworkManager
+
+# 3. Install I2C tools
+sudo apt-get install -y i2c-tools
+
+# 4. Install BLEAK for Bluetooth scanning
+pip install bleak
+
+# 5. Enable camera (run raspi-config)
+sudo raspi-config
+# → Interface Options → Legacy Camera → Enable
+
+# 6. Restart
+sudo reboot
+
+# 7. Run the application
+cd ~/camp_tutor/pi
+python main.py
+```
+
+### Web Interface
+
+1. **Save Sudo Password First**: Go to `/wifi`, enter `Refugee123@` in admin password
+2. **WiFi Scanning**: Uses `nmcli` with sudo from `passwords.txt`
+3. **Bluetooth Scanning**: Uses `bleak` library for real BLE discovery
+
+---
+
 ## 1. Architecture Overview
 
 ### System Design Principle
@@ -72,6 +116,85 @@ Before any movement, the robot must:
 
 ## 2. File Tree
 
+```
+camp_tutor/
+├── pi/
+│   ├── main.py                      # Main entry point
+│   ├── passwords.txt                # Sudo password (Refugee123@)
+│   ├── requirements.txt            # Python dependencies
+│   ├── install.sh                  # Installation script
+│   ├── audio/
+│   │   ├── __init__.py
+│   │   ├── wake_word.py              # Wake word detection
+│   │   ├── speech_to_text.py         # Speech recognition
+│   │   ├── text_to_speech.py       # TTS output
+│   │   ├── audio_device.py        # Audio device management
+│   │   └── audio_processor.py    # Audio processing
+│   ├── ai/
+│   │   ├── __init__.py
+│   │   ├── language_detection.py   # Language identification
+│   │   ├── tutor_engine.py       # Core tutoring logic
+│   │   ├── homework_generator.py # Homework creation
+│   │   ├── assessment_engine.py # Quiz/assessment logic
+│   │   ├── progress_tracker.py  # Progress tracking
+│   │   ├── tflite_models.py     # TensorFlow Lite wrapper
+│   │   └── ai_controller.py    # AI controller
+│   ├── vision/
+│   │   ├── __init__.py
+│   │   ├── camera.py             # Pi Camera interface
+│   │   ├── camera_capture.py    # Camera capture
+│   │   ├── visual_monitor.py    # Visual awareness
+│   │   └── facial_recognition.py # Face recognition
+│   ├── bluetooth/
+│   │   ├── __init__.py
+│   │   └── bluetooth_manager.py # BLE scanning with bleak
+│   ├── display/
+│   │   ├── __init__.py
+│   │   └── lcd5110.py          # Nokia LCD 5110 driver
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── student_db.py        # Student database
+│   │   ├── class_manager.py   # Class management
+│   │   └── session_logger.py  # Session logging
+│   ├── student_management/
+│   │   ├── __init__.py
+│   │   └── student_recognition.py # Student recognition
+│   ├── control/
+│   │   ├── __init__.py
+│   │   ├── rex_client.py       # I2C REX client
+│   │   └── decision_manager.py # LOOK->MEASURE->DECIDE->MOVE
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── settings.py        # Configuration
+│   │   └── wifi_manager.py   # WiFi management
+│   ├── web/
+│   │   ├── __init__.py
+│   │   ├── web_ui.py        # Flask web server
+│   │   └── templates/       # HTML templates
+│   │       ├── dashboard.html
+│   │       ├── students.html
+│   │       ├── wifi.html
+│   │       ├── bluetooth.html
+│   │       ├── devices.html
+│   │       └── config.html
+│   └── ui/
+│       ├── __init__.py
+│       ├── ui_controls.py    # UI controls
+│       └── diagnostics.py   # Diagnostics
+├── rex/
+│   ├── rex_firmware.ino       # Main ESP32 firmware
+│   ├── command_parser.cpp     # Command parsing
+│   ├── servo_controller.cpp/h # Pan-tilt control
+│   ├── ultrasonic.cpp/h     # Distance sensor
+│   ├── motor_controller.cpp/h # Omni-drive control
+│   ├── safety_controller.cpp/h # Safety enforcement
+│   └── i2c_protocol.h      # I2C protocol definitions
+├── docs/
+│   ├── SPEC.md
+│   ├── REPORT.md
+│   ├── SETUP.md
+│   └── MULTI_LANGUAGE_REPORT.md
+└── README.md
 ```
 camp_tutor/
 ├── pi/
@@ -428,10 +551,23 @@ The tutor adapts to:
 4. **WiFi Connectivity**
    - Save credentials persistently
    - Default to offline mode
-   - Network scanning support
-   - nmcli-based connection
+   - Network scanning support (nmcli with sudo)
+   - Live status from system
+   - Password stored in passwords.txt
 
-5. **Focused Online Mode**
+5. **Bluetooth Connectivity**
+   - BLE scanning with bleak library
+   - Live status via rfkill command
+   - Toggle persistence across page navigation
+   - Audio output to Bluetooth speakers
+
+6. **Password File (pi/passwords.txt)**
+   ```
+   sudo=Refugee123@
+   ```
+   Used for sudo operations (WiFi scanning/connection)
+
+7. **Focused Online Mode**
    - When connected online: AI only listens/answers queries
    - No background processes during focused mode
    - Optimized for learning Q&A
@@ -451,12 +587,19 @@ Student Recognition Components:
 
 | Route | Description |
 |-------|-------------|
-| `/` | Student list view |
-| `/add` | Add new student |
-| `/edit/<id>` | Edit student |
-| `/wifi` | WiFi settings |
-| `/settings` | System settings |
+| `/` | Dashboard |
+| `/students` | Student list |
+| `/student/add` | Add new student |
+| `/courses` | Course management |
+| `/results` | Student results |
+| `/progress` | Progress view |
+| `/config` | Configuration |
+| `/wifi` | WiFi settings (scanning/connection) |
+| `/bluetooth` | Bluetooth settings (BLE scanning) |
+| `/devices` | Device diagnostics |
 | `/api/status` | API status |
+| `/api/bluetooth/scan` | BLE scan endpoint |
+| `/api/wifi/scan` | WiFi scan endpoint |
 
 ### Data Storage
 

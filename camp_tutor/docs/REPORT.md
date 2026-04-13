@@ -1,8 +1,56 @@
 # Camp Tutor - Full Application Review Report
 
 **Date:** April 10, 2026  
-**Version:** 2.1  
+**Version:** 2.2  
 **Status:** COMPLETE
+
+---
+
+## Recent Updates (v2.2)
+
+- **WiFi Management**: Live status from system (`nmcli`), auto-detect connected network on startup
+- **Bluetooth**: Live status via `rfkill` command, toggle persistence across page navigation
+- **Toggle Fix**: WiFi/Bluetooth toggles now fetch state from server on page load (no more reset)
+- **Password File**: Added `pi/passwords.txt` for sudo password storage (Refugee123@)
+- **GPIO 19**: Pin 35 (PWM) for motor control removed (motors controlled by REX)
+- **BLEAK Library**: Added real Bluetooth scanning with `bleak` library
+- **Device Diagnostics**: Updated with live WiFi/Bluetooth checks
+
+---
+
+## How to Make the Robot Work
+
+```bash
+# On Raspberry Pi - Run these commands:
+
+# 1. Start Bluetooth
+sudo systemctl start bluetooth
+sudo systemctl enable bluetooth
+
+# 2. Start NetworkManager
+sudo systemctl start NetworkManager
+sudo systemctl enable NetworkManager
+
+# 3. Install I2C tools
+sudo apt-get install -y i2c-tools
+
+# 4. Enable camera (run raspi-config)
+sudo raspi-config
+# → Interface Options → Legacy Camera → Enable
+
+# 5. Restart
+sudo reboot
+
+# 6. Run the application
+cd ~/camp_tutor/pi
+python main.py
+```
+
+### Web Interface Usage
+
+1. **Save Sudo Password First**: Go to `/wifi` page, enter `Refugee123@` in admin password field
+2. **Connect WiFi**: Scan and connect to your network
+3. **Bluetooth**: Go to `/bluetooth` tab, click scan to find devices
 
 ---
 
@@ -25,6 +73,9 @@
 2. **Voice Output**: pyttsx3 voice "gmw/en" not found on Pi. Uses gTTS as fallback.
 3. **Camera**: python-prctl requires `libcap-dev` system package.
 4. **AI Models**: TensorFlow too large (~282MB) for Pi 3B+ 32GB SD. Uses fallback rule-based AI instead.
+5. **Bluetooth Scanning**: Requires `bleak` library - install with `pip install bleak`
+6. **WiFi Commands**: Need sudo with password stored in `passwords.txt` file
+7. **Motors**: Motors controlled by REX Arduino, not directly by Pi GPIO
 
 ---
 
@@ -491,6 +542,57 @@ Features:
 - Installs system packages (libcap-dev, portaudio, etc.)
 - Installs Python dependencies
 - Configures SPI and I2C interfaces
+
+---
+
+## 13. AI Robot Functionality
+
+### 13.1 Core AI Modules
+
+| Module | File | Function |
+|--------|------|----------|
+| **Tutor Engine** | `ai/tutor_engine.py` | Core teaching logic with Pearson Edexcel curriculum |
+| **Progress Tracker** | `ai/progress_tracker.py` | Track student learning, scores, streaks |
+| **Assessment Engine** | `ai/assessment_engine.py` | Quizzes and tests with auto-grading |
+| **Language Detection** | `ai/language_detection.py` | Detect student language (19 supported) |
+| **Homework Generator** | `ai/homework_generator.py` | Generate personalized homework |
+| **TFLite Models** | `ai/tflite_models.py` | ML-based difficulty adaptation |
+
+### 13.2 Hardware Integration
+
+| Component | Control |
+|-----------|---------|
+| **Motors** | Controlled by REX Arduino via I2C |
+| **Servos** | Pan/tilt camera movement |
+| **Ultrasonic** | Distance sensing for safety |
+| **LCD Display** | Nokia 5110 screen |
+| **Camera** | Facial recognition, student detection |
+| **Speaker/Mic** | TTS output, voice input |
+| **Bluetooth** | Audio output to speakers/headphones |
+| **WiFi** | Online/offline mode switching |
+
+### 13.3 Curriculum (Pearson Edexcel)
+
+- **Age Groups**: Early (3-5), Primary (5-11), Lower Secondary (11-14), Upper Secondary (14-18)
+- **Subjects**: Mathematics, Science, English, Global Citizenship, Computing, Programming
+- **Languages**: 19 languages supported (en, zh, hi, ar, fr, bn, pt, ru, id, ur, de, ja, pcm, ar-eg, mr, vi, te, tr, yue)
+
+### 13.4 Teaching Workflow
+
+1. **Wake Word** → "Camp Tutor" activates robot
+2. **Face Recognition** → Identify student
+3. **Language Detection** → Detect student language
+4. **Adaptive Teaching** → Difficulty based on performance
+5. **Quiz/Assessment** → Test understanding
+6. **Progress Tracking** → Record answers, update scores
+
+### 13.5 Student Management
+
+- Add/view/delete students
+- Track progress per topic
+- Generate weak topic reports
+- Age-based content delivery
+- Multi-language support
 
 ---
 

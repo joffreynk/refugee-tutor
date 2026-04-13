@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Camp Tutor - Commands</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding-bottom: 80px;
+        }
+        
+        /* Mobile-first header */
+        .header {
+            background: #0f0f23;
+            padding: 12px 15px;
+            border-bottom: 2px solid #00d9ff;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.2rem;
+        }
+        
+        /* Mobile nav */
+        .nav {
+            background: #0a0a1a;
+            padding: 8px 10px;
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+        .nav a {
+            color: #aaa;
+            text-decoration: none;
+            padding: 10px 12px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .nav a:hover, .nav a.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        
+        /* Main content */
+        .container { padding: 15px; }
+        
+        /* Mobile-friendly sections */
+        .section {
+            background: #0f0f23;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .section h2 {
+            color: #ff6b6b;
+            margin-bottom: 12px;
+            font-size: 1rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+        }
+        
+        /* Info bar */
+        .info {
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            margin-bottom: 15px;
+        }
+        .info strong { color: #00d9ff; }
+        
+        /* Touch-friendly buttons */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        button {
+            padding: 14px 10px;
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: 0.3s;
+            touch-action: manipulation;
+        }
+        button:hover { background: #e94560; }
+        button:active { transform: scale(0.95); }
+        button:disabled { background: #555; cursor: not-allowed; }
+        
+        /* Full width buttons */
+        .full-width { grid-column: span 2; }
+        
+        /* Language select */
+        select {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        /* Output console */
+        .output {
+            background: #0a0a1a;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            min-height: 80px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        /* Status text */
+        #teachStatus, #langStatus {
+            color: #00ff00;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+        
+        /* Mobile adjustments */
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1rem; }
+            .grid { grid-template-columns: 1fr; }
+            .full-width { grid-column: span 1; }
+            button { font-size: 1rem; padding: 16px; }
+        }
+        
+        /* Larger screens */
+        @media (min-width: 768px) {
+            body { padding-bottom: 0; }
+            .nav { position: static; overflow-x: visible; }
+            .container { max-width: 800px; margin: 0 auto; }
+            .grid { grid-template-columns: repeat(2, 1fr); }
+            .full-width { grid-column: span 2; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎓 Camp Tutor</h1>
+    </div>
+    
+    <div class="container">
+        <div class="info">
+            <strong>HW:</strong> Pi 3 B+ | Camera | USB Mic | Headphones
+        </div>
+        
+        <div class="section">
+            <h2>📚 Teaching</h2>
+            <div class="grid">
+                <button onclick="startTeach()" style="background: #00ff00; color: #000;">▶ Start</button>
+                <button onclick="stopTeach()" style="background: #ff4757;">■ Stop</button>
+            </div>
+            <p id="teachStatus"></p>
+        </div>
+        
+        <div class="section">
+            <h2>🌐 Language</h2>
+            <select id="langSelect">
+                <option value="en">English</option>
+                <option value="zh">Chinese (中文)</option>
+                <option value="fr">French (Français)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="it">Italian (Italiano)</option>
+                <option value="pt">Portuguese (Português)</option>
+                <option value="ar">Arabic (العربية)</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="ru">Russian (Русский)</option>
+            </select>
+            <button onclick="switchLanguage()" style="width:100%;">Switch Language</button>
+            <p id="langStatus"></p>
+        </div>
+        
+        <div class="section">
+            <h2>📷 Camera</h2>
+            <div class="grid">
+                <button onclick="capture()">📸 Capture</button>
+                <button onclick="analyze()">🔍 Analyze</button>
+                <button onclick="detectStudents()" class="full-width">👨‍🎓 Detect Students</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🎤 Audio</h2>
+            <div class="grid">
+                <button onclick="testMic()">🎙️ Mic</button>
+                <button onclick="testSpeaker()">🔊 Speaker</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🤖 Robot</h2>
+            <button onclick="checkRex()" style="width:100%;">🔌 Check REX</button>
+        </div>
+        
+        <div class="section">
+            <h2>📊 Status</h2>
+            <button onclick="checkReady()" style="width:100%;">✅ Check All Ready</button>
+        </div>
+        
+        <div class="output" id="output">Ready...</div>
+    </div>
+    
+    <div class="nav">
+        <a href="/">🏠 Home</a>
+        <a href="/commands" class="active">⚡ Commands</a>
+        <a href="/students">👨‍🎓 Students</a>
+        <a href="/courses">📚 Courses</a>
+        <a href="/devices">🔌 Devices</a>
+        <a href="/wifi">📶 WiFi</a>
+    </div>
+
+    <script>
+    function log(msg) {
+        document.getElementById('output').textContent = msg;
+    }
+    
+    async function capture() {
+        log('📸 Capturing...');
+        try {
+            const r = await fetch('/api/camera/capture_libcamera', {method: 'POST'});
+            const d = await r.json();
+            log(d.success ? '✓ Photo captured!' : d.error);
+        } catch(e) { log(e); }
+    }
+    
+    async function analyze() {
+        log('🔍 Analyzing...');
+        try {
+            const r = await fetch('/api/camera/analyze', {method: 'POST'});
+            const d = await r.json();
+            if(d.success) log(`Seen: ${d.description}`);
+            else log(d.error);
+        } catch(e) { log(e); }
+    }
+    
+    async function detectStudents() {
+        log('👨‍🎓 Detecting...');
+        try {
+            const r = await fetch('/api/students/detect', {method: 'POST'});
+            const d = await r.json();
+            log(d.message);
+        } catch(e) { log(e); }
+    }
+    
+    async function testMic() {
+        log('🎙️ Testing mic...');
+        try {
+            const r = await fetch('/api/audio/test_input', {method: 'POST'});
+            const d = await r.json();
+            log(d.message);
+        } catch(e) { log(e); }
+    }
+    
+    async function testSpeaker() {
+        log('🔊 Testing speaker...');
+        try {
+            const r = await fetch('/api/speaker/test', {method: 'POST'});
+            const d = await r.json();
+            log(d.message);
+        } catch(e) { log(e); }
+    }
+    
+    async function checkRex() {
+        log('🔌 Checking REX...');
+        try {
+            const r = await fetch('/api/device/test/rex', {method: 'POST'});
+            const d = await r.json();
+            log(d.message || d.error);
+        } catch(e) { log(e); }
+    }
+    
+    async function switchLanguage() {
+        const lang = document.getElementById('langSelect').value;
+        log('🌐 Switching to ' + lang + '...');
+        try {
+            const r = await fetch('/api/language', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({language: lang})
+            });
+            const d = await r.json();
+            if(d.success) {
+                document.getElementById('langStatus').textContent = '✓ Changed to ' + lang;
+                log('✓ Language: ' + lang);
+            } else {
+                log('Error: ' + d.error);
+            }
+        } catch(e) { log(e); }
+    }
+    
+    async function checkReady() {
+        log('✅ Checking...');
+        try {
+            const r = await fetch('/api/ready');
+            const d = await r.json();
+            if(d.success) {
+                log(`📷 ${d.status.camera?'✓':'✗'} | 🎤 ${d.status.audio?'✓':'✗'} | 🤖 ${d.status.robot?'✓':'✗'}`);
+            } else {
+                log('Failed: ' + d.error);
+            }
+        } catch(e) { log(e); }
+    }
+    
+    async function startTeach() {
+        const lang = document.getElementById('langSelect').value;
+        log('▶ Starting ' + lang + '...');
+        try {
+            const r = await fetch('/api/teach', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({language: lang})
+            });
+            const d = await r.json();
+            if(d.success) {
+                document.getElementById('teachStatus').textContent = '✓ Teaching started';
+                log('✓ Started!');
+            } else {
+                log('Error: ' + d.error);
+            }
+        } catch(e) { log(e); }
+    }
+    
+    async function stopTeach() {
+        log('■ Stopping...');
+        try {
+            const r = await fetch('/api/stop', {method: 'POST'});
+            const d = await r.json();
+            if(d.success) {
+                document.getElementById('teachStatus').textContent = '✓ Stopped';
+                log('✓ Stopped');
+            }
+        } catch(e) { log(e); }
+    }
+    </script>
+</body>
+</html>

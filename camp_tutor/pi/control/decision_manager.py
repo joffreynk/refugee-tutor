@@ -22,12 +22,12 @@ class DecisionManager:
         """Initialize decision manager."""
         if not self.rex.connect():
             logger.warning("Could not connect to REX - continuing without hardware")
-            return True  # Continue without REX - use mock
+            return True
 
         status = self.rex.get_status()
-        if not status.startswith("STATUS:"):
+        if not isinstance(status, dict) or not status.get("responding"):
             logger.warning("REX status check failed")
-            return True  # Continue with warning
+            return True
 
         logger.info("Decision manager initialized")
         return True
@@ -179,7 +179,7 @@ class DecisionManager:
             logger.info("REX returned to home")
         return result
 
-    def get_status(self) -> str:
+    def get_status(self) -> dict:
         """Get robot status."""
         return self.rex.get_status()
 

@@ -3,6 +3,7 @@
 # Core
 flask>=2.0.0
 werkzeug>=2.0.0
+requests>=2.28.0
 
 # Bluetooth
 bleak>=0.20.0

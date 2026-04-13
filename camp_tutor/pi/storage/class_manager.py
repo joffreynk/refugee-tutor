@@ -111,6 +111,63 @@ class ClassManager:
         """Get display name for current age group."""
         return settings.AGE_GROUP_DISPLAY.get(self.age_group, "Unknown")
 
+    def create_group(self, name: str, language: str, level: str = "beginner") -> str:
+        """Create a new class group."""
+        group_id = f"group_{uuid.uuid4().hex[:8]}"
+        entry = TimetableEntry(
+            id=group_id,
+            age_group=level,
+            day_of_week=1,
+            start_time="09:00",
+            subject=name,
+            topic=language,
+        )
+        self.timetable.append(entry)
+        self._save_data()
+        return group_id
+    
+    def get_all_groups(self) -> list:
+        """Get all groups."""
+        return [{"id": e.id, "name": e.subject, "language": e.topic, "students": []} for e in self.timetable]
+    
+    def enroll_student(self, group_id: str, student_id: str) -> bool:
+        """Enroll a student to a group."""
+        for entry in self.timetable:
+            if entry.id == group_id:
+                if not hasattr(entry, 'students'):
+                    entry.students = []
+                if student_id not in entry.students:
+                    entry.students.append(student_id)
+                    self._save_data()
+                return True
+        return False
+    
+    def get_group_students(self, group_id: str) -> list:
+        """Get students in a group."""
+        for entry in self.timetable:
+            if entry.id == group_id:
+                return getattr(entry, 'students', [])
+        return []
+    
+    def add_timetable_entry(self, day: str, time: str, subject: str, language: str) -> dict:
+        """Add a timetable entry."""
+        day_map = {"monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6, "sunday": 7}
+        entry = TimetableEntry(
+            id=f"tt_{uuid.uuid4().hex[:8]}",
+            age_group="primary",
+            day_of_week=day_map.get(day, 1),
+            start_time=time,
+            subject=subject,
+            topic=language,
+        )
+        self.timetable.append(entry)
+        self._save_data()
+        return {"day_of_week": day, "start_time": time, "subject": subject, "topic": language}
+    
+    def get_timetable(self) -> list:
+        """Get all timetable entries."""
+        return [{"id": e.id, "day_of_week": e.day_of_week, "start_time": e.start_time, "subject": e.subject, "topic": e.topic} for e in self.timetable]
+
     def start_class(self, student_count: int = 1) -> ClassSession:
         """Start a new class session for current age group."""
         if self.current_class:

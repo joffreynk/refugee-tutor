@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,18 @@ class StudentDB:
         except Exception as e:
             logger.error(f"Could not save student DB: {e}")
 
+    def _get_unique_name(self, base_name: str) -> str:
+        """Generate unique student name by incrementing if duplicate exists."""
+        if not any(s.get("name") == base_name for s in self.students.values()):
+            return base_name
+
+        counter = 1
+        while True:
+            new_name = f"{base_name}{counter}"
+            if not any(s.get("name") == new_name for s in self.students.values()):
+                return new_name
+            counter += 1
+
     def create_student(
         self,
         name: str,
@@ -48,11 +61,12 @@ class StudentDB:
         age: Optional[int] = None,
     ) -> str:
         """Create a new student profile."""
-        student_id = f"student_{uuid.uuid4().hex[:8]}"
+        student_id = f"student_{uuid.uuid4().hex}"
+        unique_name = self._get_unique_name(name.strip())
 
         self.students[student_id] = {
             "id": student_id,
-            "name": name,
+            "name": unique_name,
             "created_at": datetime.now().isoformat(),
             "preferred_language": preferred_language,
             "current_level": 1,
@@ -82,13 +96,16 @@ class StudentDB:
         if student_id not in self.students:
             return None
 
+        student_name = self.students[student_id].get("name", "student")
+        base_name = student_name.replace(" ", "_").lower()
+
         if filename is None:
             count = self.students[student_id].get("photo_count", 0)
-            filename = f"photo_{count + 1}.jpg"
+            filename = f"{base_name}_{count + 1}.jpg"
 
         student_photos = self._photos_dir / student_id
         student_photos.mkdir(parents=True, exist_ok=True)
-        
+
         filepath = student_photos / filename
         try:
             with open(filepath, "wb") as f:
@@ -101,6 +118,61 @@ class StudentDB:
             logger.error(f"Failed to save photo: {e}")
             return None
 
+    def get_all_photos(self, student_id: str) -> list:
+        """Get all photo paths for a student."""
+        if student_id not in self.students:
+            return []
+
+        student_photos = self._photos_dir / student_id
+        if not student_photos.exists():
+            return []
+
+        photos = sorted(student_photos.glob("*.jpg"))
+        return [str(p) for p in photos]
+
+    def delete_photo(self, student_id: str, photo_index: int) -> bool:
+        """Delete a photo by index (1-based)."""
+        if student_id not in self.students:
+            return False
+
+        photos = self.get_all_photos(student_id)
+        if photo_index < 1 or photo_index > len(photos):
+            return False
+
+        try:
+            os.remove(photos[photo_index - 1])
+            self.students[student_id]["photo_count"] = max(0, self.students[student_id].get("photo_count", 1) - 1)
+            self._save()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete photo: {e}")
+            return False
+
+    def update_student_name(self, student_id: str, new_name: str) -> bool:
+        """Update student name and rename photo files."""
+        if student_id not in self.students:
+            return False
+
+        old_name = self.students[student_id].get("name", "student")
+        if old_name == new_name:
+            return True
+
+        unique_name = self._get_unique_name(new_name.strip())
+        self.students[student_id]["name"] = unique_name
+
+        old_base = old_name.replace(" ", "_").lower()
+        new_base = unique_name.replace(" ", "_").lower()
+
+        student_photos = self._photos_dir / student_id
+        if student_photos.exists():
+            for photo_file in student_photos.glob("*.jpg"):
+                if old_base in photo_file.name:
+                    new_name_file = photo_file.name.replace(old_base, new_base)
+                    photo_file.rename(student_photos / new_name_file)
+
+        self._save()
+        return True
+
     def get_photo_path(self, student_id: str, photo_index: int = 1) -> Optional[str]:
         """Get path to a student's photo."""
         if student_id not in self.students:
@@ -108,13 +180,13 @@ class StudentDB:
 
         student_photos = self._photos_dir / student_id
         photo_path = student_photos / f"photo_{photo_index}.jpg"
-        
+
         if photo_path.exists():
             return str(photo_path)
-        
+
         for f in sorted(student_photos.glob("*.jpg")):
             return str(f)
-        
+
         return None
 
     def get_photos_dir(self, student_id: str) -> Optional[Path]:
@@ -144,6 +216,62 @@ class StudentDB:
         topic_data["average_score"] = topic_data["total_score"] / topic_data["attempts"]
 
         self._recalculate_subject_average(student_id, subject)
+        self._save()
+        return True
+
+    def update_computing_progress(self, student_id: str, lesson_number: int, completed: bool, score: float = 0) -> bool:
+        """Update Year 7 Computing lesson progress."""
+        if student_id not in self.students:
+            return False
+
+        if "computing_progress" not in self.students[student_id]:
+            self.students[student_id]["computing_progress"] = {
+                "current_lesson": 1,
+                "completed_lessons": [],
+                "total_time_minutes": 0,
+                "last_lesson_date": None
+            }
+
+        cp = self.students[student_id]["computing_progress"]
+
+        if completed and lesson_number not in cp["completed_lessons"]:
+            cp["completed_lessons"].append(lesson_number)
+            cp["current_lesson"] = lesson_number + 1 if lesson_number < 60 else lesson_number
+
+        if score > 0:
+            if "lesson_scores" not in cp:
+                cp["lesson_scores"] = {}
+            cp["lesson_scores"][str(lesson_number)] = score
+
+        cp["last_lesson_date"] = datetime.now().isoformat()
+        self._save()
+        return True
+
+    def get_computing_progress(self, student_id: str) -> dict:
+        """Get Year 7 Computing progress."""
+        if student_id not in self.students:
+            return {"current_lesson": 1, "completed_lessons": [], "total_time_minutes": 0}
+
+        return self.students[student_id].get("computing_progress", {
+            "current_lesson": 1,
+            "completed_lessons": [],
+            "total_time_minutes": 0
+        })
+
+    def set_computing_lesson(self, student_id: str, lesson_number: int) -> bool:
+        """Set which lesson to teach next."""
+        if student_id not in self.students:
+            return False
+
+        if "computing_progress" not in self.students[student_id]:
+            self.students[student_id]["computing_progress"] = {
+                "current_lesson": 1,
+                "completed_lessons": [],
+                "total_time_minutes": 0,
+                "last_lesson_date": None
+            }
+
+        self.students[student_id]["computing_progress"]["current_lesson"] = lesson_number
         self._save()
         return True
 
@@ -183,7 +311,7 @@ class StudentDB:
 
             for topic, topic_data in data.get("topics", {}).items():
                 avg = topic_data.get("average_score", 0)
-                if avg < 0.6:
+                if avg < settings.SCORE_THRESHOLD:
                     weak_topics.append({
                         "subject": subj,
                         "topic": topic,
@@ -273,29 +401,6 @@ class StudentDB:
             s for s in self.students.values()
             if query_lower in s.get("name", "").lower()
         ]
-
-    def set_classroom(self, student_id: str, classroom: Optional[str]) -> bool:
-        """Set classroom for a student."""
-        if student_id not in self.students:
-            return False
-        self.students[student_id]["classroom"] = classroom
-        self._save()
-        return True
-
-    def get_classroom_students(self, classroom: str) -> list:
-        """Get all students in a classroom."""
-        return [
-            s for s in self.students.values()
-            if s.get("classroom") == classroom
-        ]
-
-    def record_attendance(self, student_id: str) -> bool:
-        """Record student attendance."""
-        if student_id not in self.students:
-            return False
-        self.students[student_id]["last_seen"] = datetime.now().isoformat()
-        self._save()
-        return True
 
 
 _student_db_instance: Optional[StudentDB] = None

@@ -43,6 +43,89 @@ class BluetoothManager:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._bleak_scanner = None
+        self._auto_connect_saved()
+
+
+    def _auto_connect_saved(self):
+        """Auto-connect to saved Bluetooth devices by scanning for name."""
+        from pathlib import Path
+        from config.wifi_manager import _load_credentials
+        
+        creds = _load_credentials()
+        bt_devices = creds.get("bluetooth_devices", {})
+        
+        if not bt_devices:
+            return
+        
+        device_name = None
+        device_address = None
+        
+        for address, device_info in bt_devices.items():
+            device_name = device_info.get("name", "")
+        
+        if not device_name:
+            return
+        
+        logger.info(f"Searching for Bluetooth device: {device_name}")
+        
+        try:
+            import subprocess
+            
+            result = subprocess.run(
+                ["sudo", "bluetoothctl", "devices"],
+                capture_output=True,
+                timeout=10,
+            )
+            
+            if result.returncode == 0:
+                devices_output = result.stdout.decode()
+                for line in devices_output.split("\n"):
+                    if device_name in line:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            device_address = parts[1]
+                            logger.info(f"Found device address: {device_address}")
+                            break
+            
+            if not device_address:
+                logger.info(f"Device {device_name} not paired - scanning...")
+                result = subprocess.run(
+                    ["sudo", "bluetoothctl", "scan", "on"],
+                    capture_output=True,
+                    timeout=30,
+                )
+                return
+            
+            result = subprocess.run(
+                ["sudo", "bluetoothctl", "trust", device_address],
+                capture_output=True,
+                timeout=10,
+            )
+            result = subprocess.run(
+                ["sudo", "bluetoothctl", "pair", device_address],
+                capture_output=True,
+                timeout=30,
+            )
+            result = subprocess.run(
+                ["sudo", "bluetoothctl", "connect", device_address],
+                capture_output=True,
+                timeout=15,
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Connected to {device_name}")
+                self._connected_device = BluetoothDevice(
+                    name=device_name,
+                    address=device_address,
+                    rssi=-50,
+                    connected=True,
+                )
+                self._state = BluetoothState.CONNECTED
+            else:
+                logger.warning(f"Could not connect to {device_name}: {result.stderr.decode()}")
+                
+        except Exception as e:
+            logger.warning(f"Bluetooth auto-connect error: {e}")
 
     @classmethod
     def get_instance(cls) -> "BluetoothManager":
@@ -54,8 +137,31 @@ class BluetoothManager:
 
     @property
     def state(self) -> BluetoothState:
-        """Get current Bluetooth state."""
+        """Get current Bluetooth state - live from system."""
+        self._check_live_status()
         return self._state
+
+    def _check_live_status(self):
+        """Check live Bluetooth status from system."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["rfkill", "list", "bluetooth"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                output = result.stdout.decode().lower()
+                if "soft blocked: yes" in output:
+                    self._state = BluetoothState.DISCONNECTED
+                elif "hard blocked: yes" in output:
+                    self._state = BluetoothState.ERROR
+                else:
+                    self._state = BluetoothState.DISCONNECTED
+            else:
+                self._state = BluetoothState.ERROR
+        except Exception:
+            self._state = BluetoothState.DISCONNECTED
 
     @property
     def connected_device(self) -> Optional[BluetoothDevice]:
@@ -101,13 +207,9 @@ class BluetoothManager:
                 self._scan_callback(self.discovered_devices)
 
         except ImportError:
-            logger.warning("bleak library not installed - using simulated devices")
-            self._state = BluetoothState.DISCONNECTED
-            self._discovered_devices = {
-                "00:11:22:33:44:55": BluetoothDevice("BAS-102A", "00:11:22:33:44:55", -45, False),
-                "AA:BB:CC:DD:EE:FF": BluetoothDevice("BT-Speaker-001", "AA:BB:CC:DD:EE:FF", -60, False),
-                "11:22:33:44:55:66": BluetoothDevice("Bluetooth-Headset", "11:22:33:44:55:66", -70, False),
-            }
+            logger.warning("bleak library not installed - cannot scan real Bluetooth devices")
+            self._state = BluetoothState.ERROR
+            self._discovered_devices = {}
             if self._scan_callback:
                 self._scan_callback(self.discovered_devices)
 
@@ -133,6 +235,41 @@ class BluetoothManager:
         thread.join(timeout=duration + 5)
         
         return self.discovered_devices
+
+    def list_devices(self) -> List[BluetoothDevice]:
+        """List all known Bluetooth devices (paired and scanned)."""
+        devices = []
+        
+        # Try bluetoothctl first
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["sudo", "bluetoothctl", "devices"],
+                capture_output=True,
+                timeout=10,
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.decode().split("\n"):
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            address = parts[1]
+                            name = " ".join(parts[2:])
+                            devices.append(BluetoothDevice(
+                                name=name,
+                                address=address,
+                                rssi=-60,
+                            ))
+        except Exception as e:
+            logger.warning(f"bluetoothctl failed: {e}")
+        
+        # Also add discovered devices from scanning
+        for addr, device in self._discovered_devices.items():
+            if not any(d.address == addr for d in devices):
+                devices.append(device)
+        
+        return devices
 
     async def _connect_async(self, address: str):
         """Connect to device asynchronously."""

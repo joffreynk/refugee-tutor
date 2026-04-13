@@ -1,0 +1,31 @@
+# Camp Tutor - Pi Dependencies
+# Install: pip install -r requirements_pi.txt
+
+# Core
+flask>=2.0.0
+werkzeug>=2.0.0
+
+# Bluetooth
+bleak>=0.20.0
+
+# Audio
+speechrecognition>=3.8.0
+pyttsx3>=2.90
+
+# Hardware
+RPi.Gpio>=0.7.0
+smbus2>=0.4.1
+pyserial>=3.5
+
+# Computer Vision
+opencv-python>=4.5.0
+numpy>=1.21.0
+
+# Display
+Adafruit-Nokia-LCD>=1.2.0
+
+# Text
+espeak
+
+# Install system packages:
+# sudo apt-get install -y portaudio19-dev mpg123

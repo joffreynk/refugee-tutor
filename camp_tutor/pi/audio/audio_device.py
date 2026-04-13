@@ -59,13 +59,21 @@ class AudioDevice:
         """Test if input device works."""
         if not self.input_device:
             return False
+        test_file = "/tmp/test.wav"
         try:
             result = subprocess.run(
-                ["arecord", "-d", "1", "-f", "S16_LE", "-r", "16000", "/tmp/test.wav"],
+                ["arecord", "-d", "1", "-f", "S16_LE", "-r", "16000", test_file],
                 capture_output=True,
                 timeout=5,
             )
-            return result.returncode == 0
+            success = result.returncode == 0
+            try:
+                import os
+                if os.path.exists(test_file):
+                    os.remove(test_file)
+            except:
+                pass
+            return success
         except Exception:
             return False
 
