@@ -478,6 +478,26 @@ def main():
         # Start session
         robot.start_session()
         
+        # Teach using Pearson curriculum from computing_year7.json
+        if robot.tutor:
+            robot.tutor.current_subject = "computing"
+            robot.tutor.current_age_group = "lower_secondary"
+            robot.tutor._current_subtopic_index = 0
+            robot.tutor._current_lesson_part = "hook"
+            robot.session_active = True  # Keep session active during teaching
+            robot.last_activity_time = time.time()  # Reset activity timer
+            
+            target_duration = 80 * 60  # 80 minutes
+            start_time = time.time()
+            
+            while (time.time() - start_time) < target_duration:
+                lesson = robot.tutor.deliver_pearson_lesson()
+                if lesson is None:
+                    robot.tutor._current_subtopic_index = 0
+                    robot.tutor._current_lesson_part = "hook"
+                robot.last_activity_time = time.time()  # Keep session alive
+                time.sleep(1)
+        
         # Keep running
         while robot.session_active:
             time.sleep(1)

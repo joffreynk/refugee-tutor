@@ -2,6 +2,8 @@
 
 import logging
 import random
+import json
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -10,6 +12,8 @@ from audio import text_to_speech
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+CURRICULUM_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "computing_year7.json")
 
 
 class CurriculumManager:
@@ -173,43 +177,49 @@ class TutorEngine:
         elif self._current_lesson_part == "teach":
             self._target_teach_time = getattr(self, '_target_teach_time', 80 * 60)
             
-            self.speak("TEACHING - 4 minutes. Listen carefully!")
-            
             sections = self._get_curriculum_sections()
-            for section in sections:
-                if self._teach_time >= self._target_teach_time:
-                    break
+            
+            # Get current section to teach
+            if self._current_section_index < len(sections):
+                section = sections[self._current_section_index]
                 title = section.get("title", "")
                 content = section.get("content", "")
+                
                 self.speak(f"Let's learn about {title}. {content}")
                 self._teach_time += 120
-            
-            self._current_lesson_part = "listen_q"
-            return {"part": "teach", "phase": "teaching", "duration_min": 4, "action": "teaching", "total_teach_time": self._teach_time}
+                self._current_section_index += 1
+                
+                # Move to listen for questions after each section
+                self._current_lesson_part = "listen_q"
+                return {"part": "teach", "phase": "teaching", "duration_min": 4, "action": "teaching", "section": title, "total_teach_time": self._teach_time}
+            else:
+                # All sections done, go to Q&A
+                self._current_lesson_part = "questions"
+                return {"part": "teach_done", "phase": "teaching_complete", "duration_min": 80}
         
         elif self._current_lesson_part == "listen_q":
-            self.speak("I finished teaching for now. This is your time to ask questions! You have 60 seconds - speak up now if you have a question!")
+            self.speak("Do you have any questions? Please speak up now!")
             
-            question = self._listen_for_student_question_timeout(60)
+            # Listen from microphone - 15 seconds timeout
+            question = self._listen_for_student_question_timeout(15)
             
             if question and len(question) > 2:
-                self.speak("I hear you! Tell me your question, and say 'that's my question thanks' when finished.")
-                full_question = self._listen_until_thanks()
+                # Answer the student's question immediately
+                guidance = self._provide_guidance(question)
+                self.speak(f"That's a great question! {guidance}")
                 
-                if full_question and len(full_question) > 2:
-                    guidance = self._provide_guidance(full_question)
-                    self.speak(f"That's a great question! {guidance}")
-                else:
-                    self.speak("I didn't catch your question. That's okay, ask next time!")
+                # Allow follow-up questions
+                self.speak("Any more questions? Say 'no' to continue.")
+                follow_up = self._listen_for_student_question_timeout(10)
+                if follow_up and "no" not in follow_up.lower():
+                    guidance2 = self._provide_guidance(follow_up)
+                    self.speak(f"{guidance2}")
             else:
                 self.speak("No questions? Let's continue!")
             
-            if self._teach_time >= self._target_teach_time:
-                self._current_lesson_part = "questions"
-                return {"part": "teach_done", "phase": "teaching_complete", "duration_min": 80}
-            else:
-                self._current_lesson_part = "teach"
-                return {"part": "listen_done", "phase": "listening", "action": "listened", "continue_teaching": True}
+            # Continue to next section
+            self._current_lesson_part = "teach"
+            return {"part": "listen_done", "phase": "listening", "action": "listened", "continue_teaching": True}
         
         elif self._current_lesson_part == "questions":
             self.speak("PHASE 2: YOUR QUESTIONS - 30 minutes. Ask me anything!")
@@ -227,8 +237,16 @@ class TutorEngine:
             self.speak("PHASE 3: QUIZ - 15 minutes!")
             
             all_quiz = []
-            for section in sections:
-                all_quiz.extend(section.get("quiz", []))
+            curriculum = self._load_json_curriculum()
+            topics = curriculum.get("topics", [])
+            if topics and self._current_subtopic_index < len(topics):
+                topic = topics[self._current_subtopic_index]
+                # Get quiz from first subtopic
+                subtopics = topic.get("subtopics", [])
+                if subtopics:
+                    st = subtopics[0]
+                    script = st.get("teaching_script", {})
+                    all_quiz.extend(script.get("quiz", []))
             
             if all_quiz:
                 responses = self._ask_and_listen_quiz(all_quiz)
@@ -273,7 +291,7 @@ class TutorEngine:
                 if answer:
                     answer_lower = answer.lower()
                     full_question += " " + answer
-                    if "thanks" in answer_lower or "done" in answer_lower or "that's it" in answer_lower:
+                    if "thanks" in answer_lower or "done thanks" in answer_lower or "that's my question" in answer_lower:
                         break
             except Exception:
                 break
@@ -296,7 +314,10 @@ class TutorEngine:
             return ""
     
     def _provide_guidance(self, question: str) -> str:
-        """Provide interactive guidance based on student question."""
+        """Provide interactive guidance based on student question using computing_year7.json."""
+        q_lower = question.lower()
+        
+        # Try to use LLM first
         try:
             from ai.llm_client import get_llm_client
             llm = get_llm_client()
@@ -309,7 +330,59 @@ class TutorEngine:
         except Exception as e:
             logger.warning(f"LLM not available: {e}")
         
-        keywords = question.lower()
+        # Build comprehensive answer from computing_year7.json
+        curriculum = self._load_json_curriculum()
+        topics = curriculum.get("topics", [])
+        
+        # Gather all relevant content from JSON
+        relevant_terms = []
+        relevant_sections = []
+        
+        for topic in topics:
+            for st in topic.get("subtopics", []):
+                script = st.get("teaching_script", {})
+                
+                # Get key terms
+                key_terms = script.get("key_terms_list", [])
+                for term in key_terms:
+                    term_name = term.get("term", "").lower()
+                    term_def = term.get("definition", "")
+                    
+                    # Check if question matches term
+                    if term_name in q_lower or any(t in q_lower for t in term_name.split()):
+                        relevant_terms.append(f"{term.get('term')}: {term_def}")
+                
+                # Get sections content
+                sections = script.get("sections", [])
+                for section in sections:
+                    title = section.get("title", "").lower()
+                    content = section.get("content", "")
+                    
+                    # Check if question keywords match section title
+                    if any(word in title for word in q_lower.split() if len(word) > 3):
+                        relevant_sections.append(f"{section.get('title')}: {content[:150]}")
+                
+                # Also check activities for relevance
+                activities = script.get("activities", [])
+                for activity in activities:
+                    prompt = activity.get("prompt", "").lower()
+                    if any(word in prompt for word in q_lower.split() if len(word) > 3):
+                        relevant_sections.append(f"Activity: {activity.get('prompt')}")
+        
+        # Build answer from JSON content
+        if relevant_terms or relevant_sections:
+            answer_parts = []
+            
+            if relevant_terms:
+                answer_parts.append("Key terms: " + ". ".join(relevant_terms[:3]))
+            
+            if relevant_sections:
+                answer_parts.append(" ".join(relevant_sections[:2]))
+            
+            return " ".join(answer_parts)
+        
+        # Default fallback responses based on keywords
+        keywords = q_lower
         
         if any(k in keywords for k in ["cpu", "processor", "brain"]):
             return "The CPU is the central processing unit - think of it as the brain of the computer. It fetches instructions, decodes them, and executes them billions of times per second!"
@@ -350,32 +423,41 @@ class TutorEngine:
         responses.append("Great effort on the quiz! Remember, every attempt helps you learn.")
         return " ".join(responses)
 
-    def _get_pearson_subtopics(self) -> list:
-        """Get subtopics using new COMPREHENSIVE_CURRICULUM."""
+    def _load_json_curriculum(self) -> dict:
+        """Load curriculum from computing_year7.json."""
         try:
-            curriculum = settings.COMPREHENSIVE_CURRICULUM.get(self.current_age_group, {}).get(self.current_subject, {})
-            topics_list = curriculum.get("topics", [])
-            if topics_list and self._current_subtopic_index < len(topics_list):
-                topic = topics_list[self._current_subtopic_index]
-                return [{"name": topic.get("name", ""), "subtopics": topic.get("subtopics", [])}]
-            return []
+            if os.path.exists(CURRICULUM_FILE):
+                with open(CURRICULUM_FILE, 'r') as f:
+                    return json.load(f)
         except Exception as e:
-            logger.warning(f"Could not get subtopics: {e}")
-            return []
+            logger.warning(f"Could not load JSON curriculum: {e}")
+        return {}
+
+    def _get_pearson_subtopics(self) -> list:
+        """Get subtopics from computing_year7.json."""
+        curriculum = self._load_json_curriculum()
+        topics = curriculum.get("topics", [])
+        if topics and self._current_subtopic_index < len(topics):
+            topic = topics[self._current_subtopic_index]
+            return topic.get("subtopics", [])
+        return []
     
     def _get_curriculum_sections(self) -> list:
-        """Get sections from comprehensive curriculum."""
-        try:
-            curriculum = settings.COMPREHENSIVE_CURRICULUM.get(self.current_age_group, {}).get(self.current_subject, {})
-            topics_list = curriculum.get("topics", [])
-            if topics_list and self._current_subtopic_index < len(topics_list):
-                topic = topics_list[self._current_subtopic_index]
-                subtopics = topic.get("subtopics", [])
-                return [{"title": s.title(), "content": f"Learning about {s}. This is an important concept in {self.current_subject}."} for s in subtopics]
-            return []
-        except Exception as e:
-            logger.warning(f"Could not get sections: {e}")
-            return []
+        """Get sections from computing_year7.json for current subtopic."""
+        curriculum = self._load_json_curriculum()
+        topics = curriculum.get("topics", [])
+        
+        # Get current topic (use first topic for now - Year 7 Computing)
+        if topics and self._current_subtopic_index < len(topics):
+            topic = topics[self._current_subtopic_index]
+            subtopics = topic.get("subtopics", [])
+            
+            # Get first subtopic
+            if subtopics:
+                st = subtopics[0]  # Get first subtopic "Getting Started with Computers"
+                script = st.get("teaching_script", {})
+                return script.get("sections", [])
+        return []
 
     def set_student_age(self, age: int) -> None:
         """Set student age and update age group."""
